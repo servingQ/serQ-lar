@@ -1,0 +1,10 @@
+[workspace]
+members = ["crates/serq-wasm"]
+resolver = "3"
+
+[profile.release]
+# speed over size: opt-level 3 runs ~1.5x faster than "s" in V8 and is
+# no larger gzipped (docs/performance.md)
+opt-level = 3
+lto = true
+codegen-units = 1

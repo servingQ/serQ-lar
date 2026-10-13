@@ -1,0 +1,65 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: serq-lar
+      - name: Read SERQ_REF
+        id: ref
+        run: echo "sha=$(cat serq-lar/SERQ_REF)" >> "$GITHUB_OUTPUT"
+      # serq-wasm depends on serQ by path (../../../serQ from the crate)
+      - uses: actions/checkout@v4
+        with:
+          repository: servingQ/serQ
+          ref: ${{ steps.ref.outputs.sha }}
+          path: serQ
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: serq-lar
+      - name: Install wasm-bindgen
+        working-directory: serq-lar
+        run: |
+          rustup show active-toolchain
+          version=$(grep -A1 'name = "wasm-bindgen"$' Cargo.lock | grep version | cut -d'"' -f2)
+          cargo install wasm-bindgen-cli --version "$version" --locked
+      - name: Build serQ for the web
+        working-directory: serq-lar
+        run: ./scripts/build-wasm.sh && ./scripts/sync-examples.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: serq-lar/web/package-lock.json
+      - name: Build the site
+        working-directory: serq-lar/web
+        run: npm ci && npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: serq-lar/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
