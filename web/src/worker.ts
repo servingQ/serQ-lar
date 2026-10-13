@@ -1,13 +1,14 @@
 // serQ runs here, off the page's thread: a run of an hour's horizon takes
 // seconds (docs/performance.md), and the page must keep animating.
 
-import init, { draw, ir, run, stages, version } from "./wasm/serq_wasm.js";
+import init, { draw, ir, run, run_logged, version } from "./wasm/serq_wasm.js";
 import wasmUrl from "./wasm/serq_wasm_bg.wasm?url";
 
 export type Request =
   | { id: number; cmd: "version" }
-  | { id: number; cmd: "draw" | "ir" | "stages"; src: string }
-  | { id: number; cmd: "run"; src: string; horizon?: number; seed?: number };
+  | { id: number; cmd: "draw" | "ir"; src: string }
+  /** `log`: keep the run's log, at most that many events (the report's `log`). */
+  | { id: number; cmd: "run"; src: string; horizon?: number; seed?: number; log?: number };
 
 export type Response = { id: number; ok: true; value: string; ms: number } | { id: number; ok: false; error: string };
 
@@ -26,15 +27,14 @@ self.onmessage = async (m: MessageEvent<Request>) => {
       case "draw":
         value = draw(q.src);
         break;
-      case "stages":
-        value = stages(q.src);
-        break;
       case "ir":
         value = ir(q.src);
         break;
-      case "run":
-        value = run(q.src, q.horizon, q.seed === undefined ? undefined : BigInt(q.seed));
+      case "run": {
+        const seed = q.seed === undefined ? undefined : BigInt(q.seed);
+        value = q.log === undefined ? run(q.src, q.horizon, seed) : run_logged(q.src, q.horizon, seed, q.log);
         break;
+      }
     }
     self.postMessage({ id: q.id, ok: true, value, ms: performance.now() - t0 } satisfies Response);
   } catch (e) {

@@ -1,30 +1,50 @@
-// The request trace serq-lar animates: what happened to each request, when.
-// The contract with serQ is docs/trace-format.md; until serQ emits it,
-// `synthetic.ts` produces a trace of this shape.
+// The run log serQ emits (`serq run --log`, docs/reference/log.md in serQ,
+// version 0): what each session did, when. serq-lar replays it; nothing
+// here is made up.
 
-export type Phase = "prefill" | "decode";
+/** A stage or a pool: its name and, in an array, its index. */
+export interface Named {
+  name: string;
+  index: number | null;
+}
 
-export type Event =
-  /** A request is issued by its session. */
-  | { t: number; kind: "arrive"; req: number }
-  /** It waits in the queue ahead of `stage` (the queue of `pool`, if one). */
-  | { t: number; kind: "wait"; req: number; stage: string; pool?: string }
-  /** It is admitted: resident in `stage`, holding what admission took. */
-  | { t: number; kind: "admit"; req: number; stage: string; phase: Phase }
-  /** Its prefill has ended: it decodes from now on. */
-  | { t: number; kind: "phase"; req: number; phase: Phase }
-  /** `stage` runs a forward pass over `reqs` for `dur` seconds. */
-  | { t: number; kind: "forward"; stage: string; dur: number; reqs: number[]; tokens: number }
-  /** It is preempted: back to the queue ahead of `stage`. */
-  | { t: number; kind: "preempt"; req: number; stage: string }
-  /** It leaves `stage` (and, for now, the figure). */
-  | { t: number; kind: "leave"; req: number; stage: string };
+/** Who an event is about: a session by its serial; a leg of it (`fork`) by its leg number too. */
+export interface About {
+  s: number;
+  leg?: number;
+}
 
-export interface Trace {
+export type LogEvent =
+  | ({ t: number; ev: "arrive" | "fork" } & About)
+  | ({ t: number; ev: "turn"; turn: number } & About)
+  | ({ t: number; ev: "wait" | "admit" | "preempt" | "revoke"; pool: number } & About)
+  | ({ t: number; ev: "refuse" | "end" } & About)
+  | ({ t: number; ev: "run"; stages: number[]; mode?: "prefill" | "decode" } & About)
+  | ({ t: number; ev: "done"; stage: number } & About)
+  /** `reqs`: each request as `[serial]`, or `[serial, leg]` for a leg's. */
+  | { t: number; ev: "iter"; stage: number; dur: number; tokens: number; reqs: number[][] };
+
+export interface Log {
   version: 0;
-  /** `serq`: emitted by the engine. `synthetic`: made up here. */
-  source: "serq" | "synthetic";
-  horizon: number;
+  stages: Named[];
+  pools: Named[];
+  /** The event cap stopped the log before the run ended. */
+  truncated: boolean;
   /** In time order. */
-  events: Event[];
+  events: LogEvent[];
+}
+
+/** The key of a session or a leg in a map. */
+export function who(e: About): string {
+  return e.leg === undefined ? String(e.s) : `${e.s}/${e.leg}`;
+}
+
+/** The key of a request in an iteration's batch. */
+export function whoOf(r: number[]): string {
+  return r.length > 1 ? `${r[0]}/${r[1]}` : String(r[0]);
+}
+
+/** `P[0]`, `tool`. */
+export function label(n: Named): string {
+  return n.index === null ? n.name : `${n.name}[${n.index}]`;
 }

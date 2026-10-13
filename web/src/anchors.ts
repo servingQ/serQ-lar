@@ -1,11 +1,7 @@
-// Where each stage is in the deployment view's SVG.
-//
-// Stopgap: `serq draw` writes no stage ids, so a station is found as a
-// `.station` shape whose label - the stage's name - sits centred 8 points
-// above it (src/view/deployment.rs). Once the SVG carries
-// `data-stage="…"` (docs/upstream.md, U2) this reads that instead. Only a
-// label that names one of the program's stages (`stages`, from serQ's IR)
-// counts: a routing diamond is drawn as a station too.
+// Where things are in the deployment view's SVG, by what the program calls
+// them: serQ names each station's stage (`<g data-stage="P">`), each queue
+// glyph's and drum's pool (`data-pool`), the arrival and exit arrows and an
+// engine's budget bar (`data-role`). An array's members share one station.
 
 export interface Box {
   x: number;
@@ -14,32 +10,70 @@ export interface Box {
   h: number;
 }
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface PoolAnchor {
+  /** The queue glyph where holds of the pool wait, if the figure draws one. */
+  queue?: Box;
+  /** The pool's drum. */
+  drum: Box;
+}
+
 export interface Anchors {
   width: number;
   height: number;
   stations: Map<string, Box>;
+  pools: Map<string, PoolAnchor>;
+  /** The arrival arrow's points, where sessions come from. */
+  arrival: Point[];
+  /** The exit arrows' points, where they go. */
+  exits: Point[][];
+  /** The used part of each engine's budget bar, and its full width. */
+  budgets: Map<string, { rect: SVGRectElement; full: number }>;
 }
 
-export function anchors(svg: SVGSVGElement, stages: string[]): Anchors {
+function box(el: SVGGraphicsElement): Box {
+  const b = el.getBBox();
+  return { x: b.x, y: b.y, w: b.width, h: b.height };
+}
+
+/** The points of a path written as `M x y L x y …` (what serQ's writer emits). */
+function points(path: SVGPathElement): Point[] {
+  const d = path.getAttribute("d") ?? "";
+  const out: Point[] = [];
+  for (const m of d.matchAll(/[ML]\s*(-?[\d.]+)\s+(-?[\d.]+)/g)) out.push({ x: Number(m[1]), y: Number(m[2]) });
+  return out;
+}
+
+export function anchors(svg: SVGSVGElement): Anchors {
   const vb = svg.viewBox.baseVal;
   const stations = new Map<string, Box>();
-  const texts = [...svg.querySelectorAll("text")].map((t) => ({
-    x: Number(t.getAttribute("x")),
-    y: Number(t.getAttribute("y")),
-    text: t.textContent ?? "",
-  }));
-  for (const el of svg.querySelectorAll<SVGGraphicsElement>("[data-stage]")) {
-    const b = el.getBBox();
-    stations.set(el.dataset.stage!, { x: b.x, y: b.y, w: b.width, h: b.height });
-  }
-  if (stations.size === 0) {
-    for (const el of svg.querySelectorAll<SVGGraphicsElement>(".station")) {
-      const b = el.getBBox();
-      const cx = b.x + b.width / 2;
-      const label = texts.find((t) => Math.abs(t.x - cx) < 0.5 && Math.abs(t.y - (b.y - 8)) < 0.5);
-      const name = label?.text.replace(/\[.*$/, "");
-      if (name && stages.includes(name)) stations.set(name, { x: b.x, y: b.y, w: b.width, h: b.height });
+  const budgets = new Map<string, { rect: SVGRectElement; full: number }>();
+  for (const g of svg.querySelectorAll<SVGGElement>("g[data-stage]")) {
+    const stage = g.dataset.stage!;
+    stations.set(stage, box(g));
+    const bar = g.querySelector<SVGRectElement>('rect[data-role="budget"]');
+    if (bar) {
+      // the writer draws the used part at 0.62 of the bar: the full width is the cell behind it
+      const cell = bar.previousElementSibling as SVGRectElement | null;
+      budgets.set(stage, { rect: bar, full: Number(cell?.getAttribute("width") ?? bar.getAttribute("width")) });
     }
   }
-  return { width: vb.width, height: vb.height, stations };
+  const pools = new Map<string, PoolAnchor>();
+  for (const g of svg.querySelectorAll<SVGGElement>("g[data-pool]")) {
+    const pool = g.dataset.pool!;
+    const isQueue = g.querySelector("ellipse") === null;
+    const b = box(g);
+    const a = pools.get(pool) ?? { drum: b };
+    if (isQueue) a.queue = b;
+    else a.drum = b;
+    pools.set(pool, a);
+  }
+  const arrivalPath = svg.querySelector<SVGPathElement>('path[data-role="arrival"]');
+  const arrival = arrivalPath ? points(arrivalPath) : [];
+  const exits = [...svg.querySelectorAll<SVGPathElement>('path[data-role="exit"]')].map(points);
+  return { width: vb.width, height: vb.height, stations, pools, arrival, exits, budgets };
 }

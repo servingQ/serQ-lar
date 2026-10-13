@@ -14,8 +14,9 @@ server, and the site must stay deployable to GitHub Pages.
   CLAUDE.md).
 - **No fork of serQ.** `serq-wasm` depends on `../serQ` by path; CI checks
   out `SERQ_REF`. Bump `SERQ_REF` in the change that needs the newer serQ.
-- **The synthetic trace is not serQ.** Say so wherever it is shown, until U1
-  lands.
+- **The replay is serQ's log, whole or cut.** The page replays the log of
+  the run it made (`run_logged`), never a made-up one; when the event cap
+  cut the log short, the banner says so.
 - **Light.** No UI framework; the wasm is the budget. Report the size
   (`scripts/build-wasm.sh` prints it) when it moves by more than 10 %.
 - **Numbers in docs are measured**, with the date, the serQ commit and the

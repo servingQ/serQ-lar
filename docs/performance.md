@@ -56,3 +56,26 @@ event) and allocation in the event loop.
 
 **Target:** a one-hour `vllm.sq` report in under 100 ms in the browser, i.e.
 ~60 ms native, a 14× improvement. That is the number serq-lar asks of serQ.
+
+## The log
+
+Measured on 2026-10-13, serQ at `feat/run-log` (#602, on v0.1.5), Node 22,
+`node scripts/bench.mjs H FILE.sq`: a run with the log (`run_logged`, no
+cap) against one without, the JSON's size, and `JSON.parse` of it.
+
+| program | horizon | `run` | `run_logged` | parse | log | events |
+|---|---:|---:|---:|---:|---:|---:|
+| multi-turn/vllm | 120 s | 52 ms | 70 ms | 32 ms | 4.6 MB | 50 067 |
+| pd-disaggregation/llmd_nixl_pull | 120 s | 149 ms | 235 ms | 124 ms | 10.8 MB | 118 482 |
+| multi-turn/replica | 120 s | 125 ms | 220 ms | 206 ms | 14.5 MB | 161 528 |
+| multi-turn/vllm | 3600 s | 1.4 s | 2.7 s | 2.2 s | 178 MB | 1 912 340 |
+| pd-disaggregation/llmd_nixl_pull | 3600 s | 5.0 s | 8.4 s | 4.4 s | 356 MB | 3 846 806 |
+| engines/sglang | 3600 s | 3.4 s | 4.7 s | 1.6 s | 177 MB | 1 810 668 |
+
+The log costs about as much as the run again, most of it writing JSON, and
+the events are almost all iterations (`iter`, one per engine step, with its
+batch). A replay plays tens of seconds, not an hour: at 120 s the page has
+its log in a quarter of a second. The cap (400 000 events, `LOG_CAP` in
+`web/src/main.ts`) keeps a long horizon from handing the page a 300 MB
+string; a columnar encoding (U5 in [upstream.md](upstream.md)) would cut
+both the size and the parse.

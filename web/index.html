@@ -9,28 +9,39 @@
   <body>
     <header>
       <h1>serq-lar</h1>
-      <span class="sub">requests moving through a serQ deployment</span>
+      <span class="sub">a serQ run, replayed over its deployment view</span>
       <span id="version" class="dim"></span>
     </header>
     <main>
       <section class="editor">
         <div class="row">
           <select id="program" aria-label="Example program"></select>
-          <button id="draw">Draw</button>
-          <button id="run">Run report</button>
+          <button id="draw">Draw &amp; run</button>
+          <label class="dim">horizon
+            <select id="horizon" aria-label="Horizon, simulated seconds">
+              <option value="10">10 s</option>
+              <option value="30" selected>30 s</option>
+              <option value="60">60 s</option>
+              <option value="120">120 s</option>
+              <option value="300">300 s</option>
+            </select>
+          </label>
+          <label class="dim">seed <input id="seed" type="number" min="1" value="1" aria-label="Seed" /></label>
         </div>
         <textarea id="source" spellcheck="false" aria-label="serQ program"></textarea>
         <pre id="report"></pre>
       </section>
       <section class="stage">
         <div id="banner" class="banner"></div>
-        <div id="view" class="view"><canvas id="overlay"></canvas></div>
+        <div id="view" class="view"><canvas id="overlay"></canvas><div id="tip" class="tip" hidden></div></div>
         <div class="controls">
           <button id="play">Play</button>
-          <input id="scrub" type="range" min="0" max="120" step="0.01" value="0" aria-label="Time" />
+          <input id="scrub" type="range" min="0" max="30" step="0.001" value="0" aria-label="Time" />
           <select id="speed" aria-label="Speed">
-            <option value="0.25">0.25×</option>
-            <option value="1" selected>1×</option>
+            <option value="0.05">0.05×</option>
+            <option value="0.1">0.1×</option>
+            <option value="0.25" selected>0.25×</option>
+            <option value="1">1×</option>
             <option value="4">4×</option>
             <option value="16">16×</option>
           </select>
@@ -38,11 +49,14 @@
           <span id="counts" class="mono dim"></span>
         </div>
         <ul class="legend">
+          <li><i class="dot ring"></i>waiting in a pool's queue</li>
           <li><i class="dot prefill"></i>prefill</li>
           <li><i class="dot decode"></i>decode</li>
-          <li><i class="dot ring"></i>waiting in a queue</li>
-          <li><i class="dot halo"></i>in the running forward pass</li>
-          <li><i class="bar"></i>forward pass progress</li>
+          <li><i class="dot plain"></i>a transfer, a tool, any other stage</li>
+          <li><i class="dot halo"></i>in the forward pass running now</li>
+          <li><i class="bar"></i>the pass's progress; the budget bar is its tokens</li>
+          <li><i class="dot flash"></i>preempted</li>
+          <li class="hint">hover a session for its story, click to follow it</li>
         </ul>
         <div class="dim mono" id="status"></div>
       </section>
