@@ -18,7 +18,8 @@ type Where =
   | { kind: "held"; pool: number; seq: number }
   | { kind: "run"; stages: number[]; mode: Mode; since: number; until: number }
   | { kind: "ready"; stage: number }
-  | { kind: "gone" };
+  /** Ended, leaving by the exit from `from` (the stage it was last on). */
+  | { kind: "gone"; from?: string };
 
 export interface Mover {
   key: string;
@@ -230,9 +231,12 @@ export class Player {
           if (!snap) m.flashed = performance.now();
           break;
         case "refuse":
-        case "end":
-          m.where = { kind: "gone" };
+        case "end": {
+          const w = m.where;
+          const from = w.kind === "ready" ? this.stageName[w.stage] : w.kind === "run" ? this.stageName[w.stages[0]] : undefined;
+          m.where = { kind: "gone", from };
           break;
+        }
       }
     }
     for (const [k, m] of this.movers) if (m.where.kind === "gone" && (snap || m.alpha <= 0)) this.movers.delete(k);
@@ -258,10 +262,12 @@ export class Player {
     return { x: 10, y: first ? first.y + first.h / 2 : this.at.height / 2 };
   }
 
-  /** Where ended sessions go: the end of the exit arrow (the last one). */
-  private sink(): Point {
-    const e = this.at.exits[this.at.exits.length - 1];
-    if (e && e.length) return e[e.length - 1];
+  /** Where an ended session goes: the end of the exit arrow from the stage
+   * it was last on, else the last exit arrow. */
+  private sink(from?: string): Point {
+    const exits = this.at.exits;
+    const e = (from && exits.find((x) => x.from === from)) || exits[exits.length - 1];
+    if (e && e.pts.length) return e.pts[e.pts.length - 1];
     return { x: this.at.width - 10, y: this.at.height / 2 };
   }
 
@@ -312,7 +318,7 @@ export class Player {
         r.push(m);
         resident.set(name, r);
       } else if (w.kind === "gone") {
-        out.set(m.key, this.sink());
+        out.set(m.key, this.sink(w.from));
       }
     }
     for (const [pool, list] of queued) {

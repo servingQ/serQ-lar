@@ -29,8 +29,8 @@ export interface Anchors {
   pools: Map<string, PoolAnchor>;
   /** The arrival arrow's points, where sessions come from. */
   arrival: Point[];
-  /** The exit arrows' points, where they go. */
-  exits: Point[][];
+  /** The exit arrows: where sessions go, each from the stage it leaves (none from a decision). */
+  exits: { from?: string; pts: Point[] }[];
   /** The used part of each engine's budget bar, and its full width. */
   budgets: Map<string, { rect: SVGRectElement; full: number }>;
 }
@@ -65,15 +65,17 @@ export function anchors(svg: SVGSVGElement): Anchors {
   const pools = new Map<string, PoolAnchor>();
   for (const g of svg.querySelectorAll<SVGGElement>("g[data-pool]")) {
     const pool = g.dataset.pool!;
-    const isQueue = g.querySelector("ellipse") === null;
     const b = box(g);
     const a = pools.get(pool) ?? { drum: b };
-    if (isQueue) a.queue = b;
+    if (g.dataset.role === "queue") a.queue = b;
     else a.drum = b;
     pools.set(pool, a);
   }
   const arrivalPath = svg.querySelector<SVGPathElement>('path[data-role="arrival"]');
   const arrival = arrivalPath ? points(arrivalPath) : [];
-  const exits = [...svg.querySelectorAll<SVGPathElement>('path[data-role="exit"]')].map(points);
+  const exits = [...svg.querySelectorAll<SVGPathElement>('path[data-role="exit"]')].map((p) => ({
+    from: p.dataset.from,
+    pts: points(p),
+  }));
   return { width: vb.width, height: vb.height, stations, pools, arrival, exits, budgets };
 }
