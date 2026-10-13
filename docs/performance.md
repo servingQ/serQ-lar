@@ -59,7 +59,7 @@ event) and allocation in the event loop.
 
 ## The log
 
-Measured on 2026-10-13, serQ at `feat/run-log` (#602, on v0.1.5), Node 22,
+Measured on 2026-10-13, serQ `92d9c11` (#602, tagged in v0.1.6-alpha.1), Node 22,
 `node scripts/bench.mjs H FILE.sq`: a run with the log (`run_logged`, no
 cap) against one without, the JSON's size, and `JSON.parse` of it.
 
