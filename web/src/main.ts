@@ -45,6 +45,7 @@ const clock = $<HTMLSpanElement>("clock");
 const counts = $<HTMLSpanElement>("counts");
 const banner = $<HTMLDivElement>("banner");
 const report = $<HTMLDivElement>("report");
+const reportAll = $<HTMLDivElement>("report-all");
 const say = $<HTMLSpanElement>("say");
 const metrics = document.querySelector<HTMLElement>("section.metrics")!;
 const dashboard = new Dashboard({
@@ -82,9 +83,12 @@ let drawnFrom: { svg: string; ir: string } | null = null;
 let ranFor: string | null = null;
 /** The status's word on that run. */
 let ranNote = "";
-/** The report of the last run, and the component the viewer chose to read it for. */
+/** The report of the last run; the component chosen in the figure, whose
+ * part of the report Replay shows under it; and the one chosen in Metrics,
+ * where the report is whole until one is. */
 let last: Report | null = null;
 let selected: Selection = null;
+let metricsSelected: Selection = null;
 let runTimer = 0;
 
 /** serQ's figure keys its dark colours on the system's theme alone; while the
@@ -105,6 +109,8 @@ function fail(message: string) {
   view.classList.add("stale");
   report.classList.add("stale");
   metrics.classList.add("stale");
+  // Flow has no text beside it: serQ's words go where its edits are answered
+  if (tab === "flow") sayIt(message, true);
   if (player) player.playing = false;
   showPlaying(false);
   diag.textContent = message;
@@ -243,9 +249,12 @@ function tick(t: number) {
 
 // ------------------------------------------------------------ report ----
 
-/** The report under the figure: all of it, or the chosen component's part, with that component lit in the figure. */
+/** The report: under the figure, the chosen component's part (nothing
+ * until one is chosen), with that component lit in the figure; in Metrics,
+ * all of it or the component chosen there. */
 function showReport() {
-  report.innerHTML = last ? render(last, selected) : "";
+  report.innerHTML = last && selected ? render(last, selected, false) : "";
+  reportAll.innerHTML = last ? render(last, metricsSelected) : "";
   markSelected();
 }
 
@@ -257,23 +266,39 @@ function markSelected() {
   }
 }
 
-/** Choose a component to read the report for; choosing it again, or `null`, shows the whole report. */
+const same = (a: Selection, b: Selection) => !!a && !!b && a.kind === b.kind && a.name === b.name;
+
+/** Choose a component to read the report for under the figure; choosing it again, or `null`, closes it. */
 function choose(c: Selection) {
-  selected = c && selected && c.kind === selected.kind && c.name === selected.name ? null : c;
+  selected = same(c, selected) ? null : c;
   showReport();
 }
 
-report.addEventListener("click", (e) => {
+/** The component a chip names (`null` for "all"), or `undefined` off the chips. */
+function chipOf(e: Event): Selection | undefined {
   const chip = (e.target as Element).closest<HTMLButtonElement>("button.chip");
-  if (!chip) return;
+  if (!chip) return undefined;
   const kind = chip.dataset.kind;
-  choose(kind === "stage" || kind === "pool" ? { kind, name: chip.dataset.name ?? "" } : null);
+  return kind === "stage" || kind === "pool" ? { kind, name: chip.dataset.name ?? "" } : null;
+}
+report.addEventListener("click", (e) => {
+  const c = chipOf(e);
+  if (c !== undefined) choose(c);
+});
+reportAll.addEventListener("click", (e) => {
+  const c = chipOf(e);
+  if (c === undefined) return;
+  metricsSelected = same(c, metricsSelected) ? null : c;
+  showReport();
 });
 
 // ------------------------------------------------------------ the diagnostic ----
 
-/** serQ's diagnostic starts `LINE:COL:`; clicking it puts the caret there. */
-diag.addEventListener("click", () => editor.goTo(diag.textContent ?? ""));
+/** serQ's diagnostic starts `LINE:COL:`; clicking it opens the text with the caret there. */
+diag.addEventListener("click", () => {
+  setTab("code");
+  editor.goTo(diag.textContent ?? "");
+});
 
 // ------------------------------------------------------------ pointer ----
 
@@ -302,11 +327,7 @@ function click(e: PointerEvent) {
   if (hit) return;
   // the press captured the pointer, so the event's target is the view: ask what is under it
   const under = document.elementFromPoint(e.clientX, e.clientY);
-  // a KV copy (serQ marks its arrow and bracket `data-copy`): its poster's queue, whose inspector turns pull into push
-  const copied = under?.closest<SVGElement>("[data-copy]");
-  if (copied) return compose.choose(copied.dataset.poster ?? null);
   const g = under?.closest<SVGGElement>("g[data-stage], g[data-pool]");
-  compose.choose(g?.dataset.stage ?? null);
   if (!g) return;
   choose(g.dataset.stage !== undefined ? { kind: "stage", name: g.dataset.stage } : { kind: "pool", name: g.dataset.pool ?? "" });
 }
@@ -318,7 +339,6 @@ let moved = false;
 let pinch = 0;
 view.addEventListener("pointerdown", (e) => {
   if ((e.target as Element).closest(".zoom, .diag")) return;
-  if (compose.down(e)) return;
   down.set(e.pointerId, { x: e.clientX, y: e.clientY });
   view.setPointerCapture(e.pointerId);
   moved = false;
@@ -386,37 +406,22 @@ const compose = new Compose(
     text: () => editor.text,
     outline: () => currentOutline,
     apply: (edits) => editor.apply(edits),
+    // the text is the Code view's
     reveal: (at) => {
+      setTab("code");
       editor.view.dispatch({ selection: { anchor: at[0], head: at[1] }, scrollIntoView: true });
       editor.view.focus();
     },
     say: (m, bad) => sayIt(m, bad),
   },
-  view,
-  $<HTMLDivElement>("drafts"),
   $<HTMLDivElement>("inspector"),
 );
-const toolMove = $<HTMLButtonElement>("tool-move");
-const toolLink = $<HTMLButtonElement>("tool-link");
-const showMode = () => {
-  toolMove.setAttribute("aria-pressed", String(!compose.connecting));
-  toolLink.setAttribute("aria-pressed", String(compose.connecting));
-  view.classList.toggle("connecting", compose.connecting);
-};
-compose.onMode = showMode;
-toolMove.onclick = () => {
-  compose.connecting = false;
-  showMode();
-};
-toolLink.onclick = () => {
-  compose.connecting = true;
-  showMode();
-};
 // ------------------------------------------------------------ the views ----
 
 /** Replay: serQ's figure with the run over it. Flow: the same deployment as
- * nodes to drag and wire. Code: the program, the width of the page. Metrics:
- * the run's numbers over time. */
+ * nodes to drag and wire, and the parts to drop onto it. Code: the program,
+ * the width of the page. Metrics: the run's numbers over time, and the
+ * report. */
 type Tab = "replay" | "flow" | "code" | "metrics";
 const TABS: Tab[] = ["replay", "flow", "code", "metrics"];
 let tab: Tab = "replay";
@@ -425,10 +430,6 @@ const replayPane = $<HTMLDivElement>("replay-pane");
 const mainEl = $<HTMLElement>("main");
 const tabButtons = [...document.querySelectorAll<HTMLButtonElement>(".tabbar button[data-tab]")];
 const tabInk = document.querySelector<HTMLSpanElement>(".tab-ink")!;
-/** The program's choices (example, Run again, horizon, seed): atop the sidebar in Flow and Code, in the run bar in Replay and Metrics. */
-const progHead = $<HTMLDivElement>("prog-head");
-const runBar = $<HTMLDivElement>("run-bar");
-const sidebarEl = $<HTMLElement>("sidebar");
 
 /** A node of the Edit view as an end of an arrow: the arrival (or the router's decision, the start of the way), a station, or a draft. */
 function endOf(id: string): { from?: From; to?: To; nic?: Draft } {
@@ -462,6 +463,10 @@ const editHost: EditHost = {
   instance: (id) => compose.makeInstance(id),
   nic: (id) => compose.nicDraft(id),
   pool: (id, name, kind, cap) => compose.declarePool(id, name, kind, cap),
+  add(part) {
+    const d = part.kind === "pool" ? compose.addPool(part.role, part.count) : compose.add(part.kind);
+    return { draft: d, id: draftId(compose.draftList.indexOf(d)) };
+  },
 };
 /** The Edit view, loaded the first time it is asked for: React and React Flow are its alone. */
 let editView: Promise<{ show(g: ReturnType<typeof graphOf>): void }> | null = null;
@@ -490,11 +495,6 @@ function setTab(t: Tab) {
   root.dataset.tab = t;
   for (const b of tabButtons) b.setAttribute("aria-selected", String(b.dataset.tab === t));
   inkTab();
-  // the sidebar is Flow's (and Code's, the width of the page); elsewhere the stage has the page
-  const bar = t === "replay" || t === "metrics";
-  if (bar && progHead.parentElement !== runBar) runBar.append(progHead);
-  if (!bar && progHead.parentElement !== sidebarEl) sidebarEl.prepend(progHead);
-  progHead.classList.toggle("as-row", t !== "flow");
   // the figure stays laid out (the graph is read off it), out of sight, as wide as the stage
   replayPane.classList.toggle("offstage", t !== "replay");
   replayPane.style.width = t === "replay" ? "" : `${mainEl.clientWidth}px`;
@@ -510,7 +510,7 @@ window.addEventListener("hashchange", () => {
   if (t && t !== tab) setTab(t);
 });
 
-// ------------------------------------------------------------ the sidebar ----
+// ------------------------------------------------------------ memory and keys ----
 
 /** The page's memory of the viewer's choices: none in a private window, and the page works without it. */
 const remember = (k: string, v: string) => {
@@ -518,60 +518,19 @@ const remember = (k: string, v: string) => {
     localStorage.setItem(`serq-lar:${k}`, v);
   } catch {}
 };
-const recall = (k: string) => {
-  try {
-    return localStorage.getItem(`serq-lar:${k}`);
-  } catch {
-    return null;
-  }
-};
 
-/** The program's sidebar: open or closed (Ctrl+B), as wide as the viewer dragged it; both remembered. */
-const narrow = matchMedia("(max-width: 860px)");
-const sidebarToggle = $<HTMLButtonElement>("sidebar-toggle");
-const sidebarOpen = () => root.dataset.sidebar !== "closed";
-function setSidebar(open: boolean) {
-  if (open) delete root.dataset.sidebar;
-  else root.dataset.sidebar = "closed";
-  // on a phone the drawer covers the stage: it is not what the next visit opens with
-  if (!narrow.matches) remember("sidebar", open ? "open" : "closed");
-  sidebarToggle.setAttribute("aria-expanded", String(open));
-}
-sidebarToggle.setAttribute("aria-expanded", String(sidebarOpen()));
-sidebarToggle.onclick = () => setSidebar(!sidebarOpen());
-$<HTMLButtonElement>("sidebar-close").onclick = () => setSidebar(false);
-$<HTMLDivElement>("scrim").onclick = () => setSidebar(false);
+// Flow has no text beside it: Ctrl+Z there undoes the text's last edit, as it would in the text
 window.addEventListener("keydown", (e) => {
-  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b" && tab === "flow") {
-    e.preventDefault();
-    setSidebar(!sidebarOpen());
-  }
+  if (tab !== "flow" || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+  if ((e.target as Element).closest("input, select, textarea, [contenteditable]")) return;
+  const k = e.key.toLowerCase();
+  const redo = k === "y" || (k === "z" && e.shiftKey);
+  if (k !== "z" && !redo) return;
+  e.preventDefault();
+  if (redo) editor.redo();
+  else editor.undo();
 });
-{
-  const w = Number(recall("sidebar-w"));
-  if (w >= 260) root.style.setProperty("--sidebar-w", `${w}px`);
-  const grip = $<HTMLDivElement>("sidebar-grip");
-  grip.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    grip.setPointerCapture(e.pointerId);
-    root.classList.add("resizing");
-    const left = $("sidebar").getBoundingClientRect().left;
-    let px = 0;
-    const move = (m: PointerEvent) => {
-      px = Math.round(Math.min(Math.max(m.clientX - left, 260), window.innerWidth * 0.7));
-      root.style.setProperty("--sidebar-w", `${px}px`);
-    };
-    const up = () => {
-      root.classList.remove("resizing");
-      grip.removeEventListener("pointermove", move);
-      if (px) remember("sidebar-w", String(px));
-    };
-    grip.addEventListener("pointermove", move);
-    grip.addEventListener("pointerup", up, { once: true });
-    grip.addEventListener("pointercancel", up, { once: true });
-  });
-}
-// the stage changes width with the sidebar: the off-stage figure follows it
+// the stage changes width with the window: the off-stage figure follows it
 new ResizeObserver(() => {
   if (tab !== "replay") replayPane.style.width = `${mainEl.clientWidth}px`;
 }).observe(mainEl);
@@ -599,21 +558,6 @@ new ResizeObserver(() => {
   show();
 }
 
-$<HTMLButtonElement>("add-prefill").onclick = () => compose.add("prefill");
-$<HTMLButtonElement>("add-decode").onclick = () => compose.add("decode");
-$<HTMLButtonElement>("add-delay").onclick = () => compose.add("delay");
-const poolForm = $<HTMLFormElement>("pool-form");
-$<HTMLButtonElement>("add-pool").onclick = () => {
-  poolForm.hidden = !poolForm.hidden;
-  if (!poolForm.hidden) poolForm.querySelector("input")?.focus();
-};
-poolForm.onsubmit = (e) => {
-  e.preventDefault();
-  const data = new FormData(poolForm);
-  compose.addPool(data.get("role") === "prefill" ? "prefill" : "decode", Number(data.get("count")) || 2);
-  poolForm.hidden = true;
-};
-showMode();
 
 for (const n of names) select.add(new Option(n, n));
 select.value = names.includes("llmd_nixl_pull") ? "llmd_nixl_pull" : names[0];
@@ -621,7 +565,9 @@ const load = () => {
   editor.text = programs[`./examples/${select.value}.sq`];
   last = null;
   selected = null;
+  metricsSelected = null;
   report.innerHTML = "";
+  reportAll.innerHTML = "";
   camera.fitted = true;
   redraw(true);
 };

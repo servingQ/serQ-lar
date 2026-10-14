@@ -1,15 +1,15 @@
-# Editing the deployment from the figure
+# Editing the deployment
 
-The page draws serQ's deployment view of the program in the editor and
-replays a run over it. The figure is editable as well: edit the text and
-the figure follows at once; add an engine and join stations with arrows
-from the figure, change a family's size, add a NIC or a pool; see a NIXL
-copy as the pull or the push it is, and turn one into the other; zoom and
-pan.
+The page draws serQ's deployment view of the program and replays a run
+over it (the Replay tab, which edits nothing). The deployment is editable
+twice over: edit the text (the Code tab) and the figure follows at once;
+or, in the Flow tab, drop engines onto serQ's graph and join stations with
+arrows, change a family's size, add a NIC or a pool, see a NIXL copy as
+the pull or the push it is and turn one into the other.
 
 ## The text is the program
 
-Every edit the figure offers is an edit of the `.sq` text, which serQ then
+Every edit the Flow tab offers is an edit of the `.sq` text, which serQ then
 compiles and draws again. The page keeps no model of the deployment of
 its own: a second model would be a second frontend, and the rules forbid
 re-implementing serQ (CLAUDE.md). So:
@@ -22,11 +22,11 @@ re-implementing serQ (CLAUDE.md). So:
   (an engine's queue, a NIC, a pool, a connector, a relation) are in
   `web/src/snippets.ts`, in the style of serQ's examples.
 - **A node nothing reaches is a draft, not text.** serQ refuses a stage
-  no request runs. An engine added from the palette is a card beside the
-  figure until an arrow reaches it; the arrow writes the queue and its
+  no request runs. An engine added from the palette is a dashed node on
+  the canvas until an arrow reaches it; the arrow writes the queue and its
   call together, so the program links at every step.
 - **An edit is one step to undo.** It is a CodeMirror transaction: Ctrl+Z
-  in the text takes it back.
+  in the text, or in the Flow tab, takes it back.
 
 ## What serQ provides
 
@@ -42,13 +42,18 @@ See [upstream.md](upstream.md), U10.
 
 1. **Live.** An edit redraws in a few milliseconds; the run starts once
    typing pauses, in a worker of its own that a newer edit stops. Text
-   serQ refuses keeps the last figure, dimmed, under the diagnostic.
+   serQ refuses keeps the last figure, dimmed, under the diagnostic
+   (in the Flow tab, over the canvas); a click on it opens the text there.
 2. **Zoom and pan.** Wheel or pinch about the pointer, drag to pan,
    double-click or Fit to fit. The replay's canvas follows (`camera.ts`).
-3. **Palette.** + Prefill, + Decode, + Delay: a draft. + Pool: a pool of
-   N engines (llm-d's InferencePool), a family `queue D[N]`; its call
-   chooses a member (`choose k in N by (work(D[k]))`), and its inspector
-   steps N.
+3. **Palette** (the Flow tab's Parts). Prefill, Decode, Delay: a draft,
+   dragged onto the canvas, where it stays until an arrow places it;
+   dropped on a station, that station calls it at once and serQ's layout
+   places it. Prefill pool, Decode pool: a pool of N engines (llm-d's
+   InferencePool), a family `queue D[N]`; its call chooses a member
+   (`choose k in N by (work(D[k]))`), and its inspector steps N. A click
+   on a part, from a phone or the keyboard, makes the draft under the
+   deployment.
 4. **The Edit view** (React Flow, the Flow tab). serQ's graph as nodes to
    drag and wire: the nodes and arrows are read off serQ's figure
    (`data-node`, `data-from`, `data-to`, `data-copy`), the kinds off the IR,
@@ -69,13 +74,13 @@ See [upstream.md](upstream.md), U10.
    connection between two handles is an arrow below; a node dragged keeps
    its place in this browser (a layout, not the program); Delete removes a
    station; "serQ's layout" puts every node back.
-5. **Arrows** (Connect mode, or a connection in the Edit view). From the arrival or a station to a station
-   or a draft: the target's call after the source's, in the gateway's
-   route or the server; a family's call chooses its member. From a NIC's
-   draft card to a queue: the KV copy (`kvt.nixl_pull`), with the NICs,
+5. **Arrows** (a connection in the Edit view). From the arrival or a
+   station to a station or a draft: the target's call after the source's,
+   in the gateway's route or the server; a family's call chooses its
+   member. From a NIC's draft to a queue: the KV copy (`kvt.nixl_pull`), with the NICs,
    the `use`s, the reader's `connector` and its entry and call `from` the
    source.
-6. **Inspector** (click a station or a copy). Instances −/+ (the family's
+6. **Inspector** (click a station or a copy in the Edit view). Instances −/+ (the family's
    `let`), pull ⇄ push (a push dispatches the source's call with `fork`,
    which serQ requires), + NIC, Make instance and + Memory pool (7),
    Duplicate (a draft copy, with the relations it reads by), Remove (the

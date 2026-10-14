@@ -6,7 +6,9 @@
 // moves with them. The arrows are routed by libavoid (route.ts) around the
 // nodes, none on top of another. A connection drawn between two handles is
 // handed to the page, which writes it into the text; serQ then draws the
-// figure again and this view follows it.
+// figure again and this view follows it. The palette's parts, dropped on
+// the canvas, are drafts where they land; dropped on a station, the station
+// calls them.
 
 import {
   Background,
@@ -31,8 +33,9 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { createContext, type FormEvent, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, type DragEvent, type FormEvent, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import type { Draft } from "../edit";
 import { type Graph, type GraphInstance, type GraphNode, SINK, SOURCE } from "./graph";
 import { avoid, labelAt, type Point, pathOf, route } from "./route";
 
@@ -51,7 +54,15 @@ export interface EditHost {
   nic(id: string): void;
   /** Declare a memory pool in a station's queue, with its capacity (slots, or tokens of KV). */
   pool(id: string, name: string, kind: "slots" | "blocks", cap: string): void;
+  /** A part from the palette made a draft: the draft, and its node's id. */
+  add(part: Part): { draft: Draft; id: string };
 }
+
+/** What the palette makes: an engine, a delay, or a pool of `count` engines. */
+export type Part = { kind: "prefill" | "decode" | "delay" } | { kind: "pool"; role: "prefill" | "decode"; count: number };
+
+/** The type a part is dragged as: the canvas takes nothing else. */
+const PART = "application/x-serq-part";
 
 const Host = createContext<EditHost | null>(null);
 
@@ -157,6 +168,52 @@ function Tools(props: { id: string; engine: boolean; inInstance: boolean; hasNic
   );
 }
 
+/** The parts: dragged onto the canvas, or clicked (on a phone, from the
+ * keyboard) to be a draft under the deployment. A pool's size is set here. */
+function Palette({ make }: { make: (part: Part, at?: { x: number; y: number }) => void }) {
+  const [count, setCount] = useState(2);
+  const n = Math.min(64, Math.max(1, Math.round(count) || 1));
+  const parts: { key: string; label: string; title: string; part: Part; note?: string }[] = [
+    { key: "prefill", label: "Prefill", title: "A prefill engine: a queue with its device, engine and pools", part: { kind: "prefill" } },
+    { key: "decode", label: "Decode", title: "A decode engine: a queue with its device, engine and pools", part: { kind: "decode" } },
+    { key: "delay", label: "Delay", title: "A delay stage: a wait outside the engines", part: { kind: "delay" } },
+    { key: "prefill", label: "Prefill pool", title: `A pool of ${n} prefill engines, a call choosing one (llm-d's InferencePool)`, part: { kind: "pool", role: "prefill", count: n }, note: `×${n}` },
+    { key: "decode", label: "Decode pool", title: `A pool of ${n} decode engines, a call choosing one (llm-d's InferencePool)`, part: { kind: "pool", role: "decode", count: n }, note: `×${n}` },
+  ];
+  return (
+    <Panel position="top-left" className="fpalette" aria-label="Parts">
+      <span className="eyebrow">Parts</span>
+      {parts.map((p) => (
+        <div
+          key={p.label}
+          className={`fpart k-${p.key}`}
+          role="button"
+          tabIndex={0}
+          draggable
+          title={`${p.title}. Drag onto the canvas, or onto a station to call it from there`}
+          onDragStart={(e) => {
+            e.dataTransfer.setData(PART, JSON.stringify(p.part));
+            e.dataTransfer.effectAllowed = "copy";
+          }}
+          onClick={() => make(p.part)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            make(p.part);
+          }}
+        >
+          {p.label}
+          {p.note && <small>{p.note}</small>}
+        </div>
+      ))}
+      <label>
+        pool of <input type="number" min={1} max={64} value={count} onChange={(e) => setCount(Number(e.target.value))} aria-label="Engines in a pool" />
+      </label>
+      <p>Drop on a station to call it from there; an arrow from a handle places a draft.</p>
+    </Panel>
+  );
+}
+
 /** An instance: serQ's panel around an engine and its NIC, with serQ's words over it. */
 function InstanceNode({ data }: NodeProps<InstanceNodeT>) {
   const i = data.instance;
@@ -217,6 +274,12 @@ function load(key: string): Layout {
     return {};
   }
 }
+/** Where a part was dropped, by the name its draft declares: the draft
+ * stands there, and so does the station it becomes, once an arrow places
+ * it (then kept with the layout). */
+const dropped = new Map<string, { x: number; y: number }>();
+const draftName = (d: Draft) => (d.kind === "nic" ? `${d.queue}.nic` : d.name);
+
 function save(key: string, layout: Layout) {
   try {
     localStorage.setItem(key, JSON.stringify(layout));
@@ -301,26 +364,42 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
     avoid().then(setA, (e) => console.error("libavoid did not load; the arrows keep React Flow's paths", e));
   }, []);
 
-  /** serQ's graph placed: a node where the viewer dragged it (`layout`, on the canvas), else where serQ's layout has it. */
-  const place = useCallback((g: Graph, layout: Layout): FlowNode[] => {
-    const serq: SerqNodeT[] = g.nodes.map((n) => ({
-      id: n.id,
-      type: "serq",
-      position: layout[n.id] ?? { x: n.x - W / 2, y: n.y - H / 2 },
-      data: { node: n, nic: g.nodes.some((x) => x.id === `${n.id}.nic`) },
-      deletable: n.kind !== "source" && n.kind !== "sink" && n.kind !== "decision",
-    }));
-    const groups: InstanceNodeT[] = g.instances.map((i) => ({
-      id: i.id,
-      type: "instance",
-      position: { x: 0, y: 0 },
-      data: { instance: i },
-      deletable: false,
-      selectable: false,
-      zIndex: 0,
-    }));
-    return fit([...groups, ...serq], (n) => n.position);
-  }, []);
+  /** serQ's graph placed: a node where the viewer dragged it (`layout`, on
+   * the canvas) or dropped its part, else where serQ's layout has it. */
+  const place = useCallback(
+    (g: Graph, layout: Layout): FlowNode[] => {
+      let kept = false;
+      const at = (n: GraphNode) => {
+        if (n.draft) return dropped.get(draftName(n.draft));
+        if (layout[n.id]) return layout[n.id];
+        // a station a dropped part became; a pool's members stacked under the first
+        const [, name, k] = /^(.*?)(?:\[(\d+)\])?$/.exec(n.id)!;
+        const d = dropped.get(name);
+        if (!d) return undefined;
+        kept = true;
+        return (layout[n.id] = { x: d.x, y: d.y + Number(k ?? 0) * (H + 24) });
+      };
+      const serq: SerqNodeT[] = g.nodes.map((n) => ({
+        id: n.id,
+        type: "serq",
+        position: at(n) ?? { x: n.x - W / 2, y: n.y - H / 2 },
+        data: { node: n, nic: g.nodes.some((x) => x.id === `${n.id}.nic`) },
+        deletable: n.kind !== "source" && n.kind !== "sink" && n.kind !== "decision",
+      }));
+      const groups: InstanceNodeT[] = g.instances.map((i) => ({
+        id: i.id,
+        type: "instance",
+        position: { x: 0, y: 0 },
+        data: { instance: i },
+        deletable: false,
+        selectable: false,
+        zIndex: 0,
+      }));
+      if (kept) save(host.layoutKey(), layout);
+      return fit([...groups, ...serq], (n) => n.position);
+    },
+    [host],
+  );
 
   // a new graph from serQ: a node the viewer dragged stays there, every other goes where serQ's layout puts it now
   useEffect(() => {
@@ -354,7 +433,10 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
       const layout = load(host.layoutKey());
       const now = flow.getNodes() as FlowNode[];
       for (const d of dragged) {
-        if (d.id.startsWith("draft:")) continue;
+        if (d.type === "serq" && d.data.node.draft) {
+          dropped.set(draftName(d.data.node.draft), d.position);
+          continue;
+        }
         // an instance moves its members
         const moved = d.type === "instance" ? now.filter((n) => n.parentId === d.id) : [now.find((n) => n.id === d.id) ?? d];
         for (const n of moved) layout[n.id] = absolute(now, n);
@@ -366,8 +448,50 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
     [host, flow, setNodes],
   );
 
+  /** A part made a draft: where it was dropped (`at`, on the screen); or,
+   * dropped on a station, called from it at once; clicked, where drafts wait. */
+  const make = useCallback(
+    (part: Part, at?: { x: number; y: number }) => {
+      const { draft, id } = host.add(part);
+      if (!at) return;
+      const p = flow.screenToFlowPosition(at);
+      dropped.set(draftName(draft), { x: p.x - W / 2, y: p.y - H / 2 });
+      const on = (flow.getIntersectingNodes({ x: p.x, y: p.y, width: 1, height: 1 }) as FlowNode[]).find(
+        (n): n is SerqNodeT => n.type === "serq" && n.data.node.kind !== "sink" && n.data.node.kind !== "draft",
+      );
+      if (on) {
+        // called from a station, it goes where serQ's layout puts it in the way
+        dropped.delete(draftName(draft));
+        host.connect(on.id, id);
+      }
+    },
+    [host, flow],
+  );
+  const [over, setOver] = useState<string | null>(null);
+  const hit = (e: DragEvent) => {
+    const p = flow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+    const n = (flow.getIntersectingNodes({ x: p.x, y: p.y, width: 1, height: 1 }) as FlowNode[]).find((n) => n.type === "serq" && n.data.node.kind !== "sink" && n.data.node.kind !== "draft");
+    return n?.id ?? null;
+  };
+  const onDragOver = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes(PART)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    const id = hit(e);
+    if (id !== over) setOver(id);
+  };
+  const onDrop = (e: DragEvent) => {
+    setOver(null);
+    const raw = e.dataTransfer.getData(PART);
+    if (!raw) return;
+    e.preventDefault();
+    make(JSON.parse(raw) as Part, { x: e.clientX, y: e.clientY });
+  };
+  const shown = useMemo(() => nodes.map((n) => (n.id === over ? { ...n, className: "drop-on" } : n.className ? { ...n, className: undefined } : n)), [nodes, over]);
+
   const serqLayout = useCallback(() => {
     save(host.layoutKey(), {});
+    dropped.clear();
     if (!graph) return;
     setNodes(place(graph, {}));
     requestAnimationFrame(() => flow.fitView({ padding: 0.12, maxZoom: 1.1 }));
@@ -375,7 +499,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
 
   return (
     <ReactFlow
-      nodes={nodes}
+      nodes={shown}
       edges={routed}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
@@ -392,6 +516,9 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
       onPaneClick={() => host.select(null)}
       onNodesDelete={(ns) => host.remove(ns.filter((n) => n.type === "serq").map((n) => n.id))}
       deleteKeyCode={["Delete", "Backspace"]}
+      onDragOver={onDragOver}
+      onDragLeave={() => setOver(null)}
+      onDrop={onDrop}
       colorMode="system"
       minZoom={0.1}
       maxZoom={4}
@@ -400,6 +527,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
       <Background gap={32} size={1} />
       <Controls />
       <MiniMap pannable zoomable />
+      <Palette make={make} />
       <Panel position="top-right">
         <button className="flow-btn" onClick={serqLayout} title="Put every node back where serQ's figure has it">
           serQ's layout

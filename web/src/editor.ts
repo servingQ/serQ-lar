@@ -6,11 +6,12 @@
 // completes are serQ's vocabulary and the names serQ's lexer cut.
 
 import { acceptCompletion, autocompletion, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
 import { lintGutter, setDiagnostics } from "@codemirror/lint";
 import { EditorState, Prec, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from "@codemirror/view";
+import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import type { Edit } from "./edit";
 
 /** serQ's roles left uncoloured: a program's own names, white space, and
@@ -38,9 +39,11 @@ const colours = StateField.define<DecorationSet>({
 const theme = EditorView.theme({
   "&": { height: "100%", fontSize: "12px", background: "var(--panel)", color: "var(--ink)" },
   ".cm-scroller": { fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace', lineHeight: "1.45" },
-  ".cm-gutters": { background: "var(--panel)", color: "var(--dim)", border: "none" },
-  ".cm-activeLine": { background: "color-mix(in srgb, var(--line) 35%, transparent)" },
-  ".cm-activeLineGutter": { background: "transparent", color: "var(--ink)" },
+  // the gutter set off from the text, so that a line's number reads as its own
+  ".cm-gutters": { background: "var(--bg)", color: "var(--dim)", borderRight: "1px solid var(--line)" },
+  ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 12px" },
+  ".cm-activeLine": { background: "color-mix(in srgb, var(--line) 45%, transparent)" },
+  ".cm-activeLineGutter": { background: "color-mix(in srgb, var(--line) 45%, transparent)", color: "var(--ink)" },
   "&.cm-focused": { outline: "none" },
   ".cm-cursor": { borderLeftColor: "var(--ink)" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { background: "color-mix(in srgb, var(--decode) 25%, transparent)" },
@@ -74,6 +77,18 @@ export class Editor {
           history(),
           drawSelection(),
           highlightActiveLine(),
+          highlightActiveLineGutter(),
+          // a guide down each level of indentation, the caret's block brighter
+          indentationMarkers({
+            thickness: 1,
+            activeThickness: 1,
+            colors: {
+              light: "color-mix(in srgb, var(--dim) 28%, transparent)",
+              dark: "color-mix(in srgb, var(--dim) 28%, transparent)",
+              activeLight: "color-mix(in srgb, var(--dim) 70%, transparent)",
+              activeDark: "color-mix(in srgb, var(--dim) 70%, transparent)",
+            },
+          }),
           bracketMatching(),
           lintGutter(),
           colours,
@@ -157,6 +172,14 @@ export class Editor {
     const set = this.view.state.changes(changes);
     const first = changes.length ? set.mapPos(changes[0].from, 1) : 0;
     this.view.dispatch({ changes: set, selection: { anchor: first }, scrollIntoView: true, userEvent: "input.figure" });
+  }
+
+  /** Undo, or redo, the text's last edit, wherever the focus is. */
+  undo() {
+    undo(this.view);
+  }
+  redo() {
+    redo(this.view);
   }
 
   /** serQ's diagnostic (`LINE:COL: message` and a caret line), underlined where it points; `null` clears it. */
