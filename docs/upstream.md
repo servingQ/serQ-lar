@@ -193,3 +193,26 @@ rather than copies of them: a push wraps the source's call in `fork { … }`
 (serQ refuses a push no leg dispatches), and a copy adds the reader's
 `connector` (serQ runs no copy without one). Both are written in
 `edit.ts` with the serQ message that asks for them.
+
+## U11. The version a pre-release tag says
+
+The page named its serQ by `serq::VERSION` (Cargo's version). serQ's
+pre-release tags do not bump it: at `v0.1.6-alpha.3` the workspace says
+`0.1.5`, so the page, `serq --version` and the report's `serq_version` all
+said 0.1.5. Stopgap: `web/vite.config.ts` names the build by
+`git describe --tags` of the serQ checkout (falling back to `SERQ_REF`),
+and the header links to that tag on GitHub. Issue draft:
+
+> **pre-release 태그에 Cargo 버전을 맞추기**
+>
+> `v0.1.6-alpha.N` 태그를 찍어도 `Cargo.toml`의 `workspace.package.version`은 `0.1.5`로 남아, `serq --version`, 보고서의 `serq_version`, serq-lar 페이지가 모두 0.1.5라고 말한다. 태그로 고정한 빌드가 자기가 어느 태그인지 모른다.
+>
+> Before (`git checkout v0.1.6-alpha.3 && serq --version`):
+> ```
+> serq 0.1.5
+> ```
+> After:
+> ```
+> serq 0.1.6-alpha.3
+> ```
+> pre-release 태그를 찍는 커밋에서 `version = "0.1.6-alpha.3"`으로 올린다(SemVer pre-release라 Cargo가 받는다). 그러면 serq-lar는 다시 `serq::VERSION`을 쓴다.

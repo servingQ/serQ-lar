@@ -510,9 +510,14 @@ dashboard.onSeek = (t) => {
 dashboard.onAddGauges = (lines) => {
   editor.text = withGauges(editor.text, lines);
 };
-drawer.ask({ cmd: "version" }).then((r) => {
-  if (r.ok) $<HTMLSpanElement>("version").textContent = `serQ ${r.value} · wasm`;
-});
+// the serQ tag the page was built from (vite.config.ts); a checkout past
+// the tag reads v…-N-g<sha>, and the link goes to that commit
+{
+  const v = $<HTMLAnchorElement>("version");
+  const sha = /-g([0-9a-f]+)$/.exec(__SERQ_REF__)?.[1];
+  v.textContent = `serQ ${__SERQ_REF__} · wasm`;
+  v.href = `https://github.com/servingQ/serQ/tree/${sha ?? __SERQ_REF__}`;
+}
 load();
 
 // for the page checks (scripts/check-page.mjs): what is on the page, without reading the canvas
