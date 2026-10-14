@@ -4,7 +4,7 @@
 // where serQ's outline says the thing is written. Whether the result is a
 // program is serQ's answer, when the page compiles it.
 
-import type { Call, Outline, Queue, Range, Relation } from "./outline";
+import { promptParam, type Call, type Outline, type Queue, type Range, type Relation } from "./outline";
 import * as snip from "./snippets";
 
 export interface Edit {
@@ -174,7 +174,7 @@ function sendTo(src: string, ol: Outline, from: From, name: string, role: string
   const way = wayBody(ol);
   if (from.kind === "arrival") {
     const firstCall = ol.calls.find((c) => c.block !== "entry" && c.verb !== "route");
-    const arg = (firstCall && argOf(src, firstCall)) ?? "n";
+    const arg = (firstCall && argOf(src, firstCall)) ?? promptParam(ol) ?? "n";
     const stmt = callText(src, name, role, family, arg, fromClause);
     if (way) return first(src, way, stmt);
     if (!ol.main) return "the program has no `fn main() { … }`";
@@ -182,9 +182,10 @@ function sendTo(src: string, ol: Outline, from: From, name: string, role: string
   }
   const q = queueOf(ol, from.stage);
   const prev = q ? callsOf(ol, q.queue.name)[0] : undefined;
-  if (prev) return after(src, prev.range[1], callText(src, name, role, family, argOf(src, prev) ?? "prompt", fromClause));
+  const prompt = promptParam(ol) ?? "prompt";
+  if (prev) return after(src, prev.range[1], callText(src, name, role, family, argOf(src, prev) ?? prompt, fromClause));
   if (!way) return `\`${from.stage}\` is called nowhere the figure can follow: write the call in the text`;
-  return last(src, way, callText(src, name, role, family, "prompt", fromClause));
+  return last(src, way, callText(src, name, role, family, prompt, fromClause));
 }
 
 // ------------------------------------------------------------ edits ----

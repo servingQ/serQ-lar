@@ -53,6 +53,12 @@ export interface Call {
   owner?: string;
 }
 
+/** The server's signature: what a request carries, and its reply. */
+export interface Signature {
+  params: { name: string; hidden: boolean }[];
+  reply: string[];
+}
+
 export interface Outline {
   main: Block | null;
   uses: { path: string; range: Range }[];
@@ -61,6 +67,8 @@ export interface Outline {
   relations: Relation[];
   routes: { gateway: string; range: Range; body: Range }[];
   server: Block | null;
+  /** Absent before serQ's outline said it; empty for a bare `server`. */
+  signature?: Signature | null;
   workload: Range | null;
   calls: Call[];
 }
@@ -71,6 +79,18 @@ export function outline(json: string, src: string): Outline {
   return JSON.parse(json, (_key, v) =>
     Array.isArray(v) && v.length === 2 && typeof v[0] === "number" && typeof v[1] === "number" ? [at(v[0]), at(v[1])] : v,
   ) as Outline;
+}
+
+/** What a request carries as its prompt: the server's first parameter the
+ * scheduler may read (`input` in `server (input, hidden output)`). */
+export function promptParam(o: Outline | null): string | null {
+  return o?.signature?.params.find((p) => !p.hidden)?.name ?? null;
+}
+
+/** What the model generates and the scheduler may not read: the server's
+ * hidden parameter (`output`), which a decode runs by. */
+export function outputParam(o: Outline | null): string | null {
+  return o?.signature?.params.find((p) => p.hidden)?.name ?? null;
 }
 
 /** What each name the outline declares is: `queue`, a declaration's kind, a member's kind. */

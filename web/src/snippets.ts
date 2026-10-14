@@ -30,8 +30,9 @@ export function prefill(name: string, count?: number): string {
 }
 
 /** A queue that decodes: device, engine, its request slots and KV, and the
- * entry that prefills locally and decodes the workload's hidden \`o\` tokens. */
-export function decode(name: string, count?: number): string {
+ * entry that prefills locally and decodes the request's hidden \`output\`
+ * tokens (the server's hidden parameter, \`o\` where it has none). */
+export function decode(name: string, count?: number, output = "o"): string {
   return `queue ${head(name, count)} : decode {
   device gpu { compute (t) = t * 2e-5; hbm (k) = 2e-4 + 2e-9 * k; kv cap 160000; }
   engine on gpu {
@@ -46,7 +47,7 @@ export function decode(name: string, count?: number): string {
   pool reqs on ${name} { queue fifo; }
   pool kv on gpu { block 16; evict lru; preempt lifo; }
   decode (prompt) {
-    ${name} (prompt, o);
+    ${name} (prompt, ${output});
   }
 }`;
 }

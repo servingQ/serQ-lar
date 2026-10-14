@@ -5,7 +5,7 @@
 // (edit.ts), which serQ then draws again.
 
 import { apply as _apply, connect, copy, declarePool, fresh, instance, remove, resize, toggle, type Draft, type Edit, type From, type To } from "./edit";
-import type { Outline, Queue } from "./outline";
+import { outputParam, type Outline, type Queue } from "./outline";
 import * as snip from "./snippets";
 
 export interface Host {
@@ -39,10 +39,15 @@ export class Compose {
     const d: Draft =
       kind === "delay"
         ? { kind: "stage", name, text: snip.delay(name) }
-        : { kind: "queue", name, role: kind, family: null, text: kind === "prefill" ? snip.prefill(name) : snip.decode(name), relations: [] };
+        : { kind: "queue", name, role: kind, family: null, text: kind === "prefill" ? snip.prefill(name) : snip.decode(name, undefined, this.output()), relations: [] };
     this.drafts.push(d);
     this.onDrafts();
     return d;
+  }
+
+  /** What a decode draft generates: the server's hidden parameter. */
+  private output(): string | undefined {
+    return outputParam(this.host.outline()) ?? undefined;
   }
 
   /** A pool of `count` engines playing `role`, a family (`queue D[3]`): a
@@ -51,7 +56,7 @@ export class Compose {
   addPool(role: "prefill" | "decode", count: number): Draft {
     const name = this.freshName(role === "prefill" ? "P" : "D");
     const n = Math.max(1, Math.round(count));
-    const text = role === "prefill" ? snip.prefill(name, n) : snip.decode(name, n);
+    const text = role === "prefill" ? snip.prefill(name, n) : snip.decode(name, n, this.output());
     const d: Draft = { kind: "queue", name, role, family: String(n), text, relations: [] };
     this.drafts.push(d);
     this.onDrafts();

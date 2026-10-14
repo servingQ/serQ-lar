@@ -10,6 +10,7 @@ import { graphOf, SINK, SOURCE, draftId } from "./flow/graph";
 import type { EditHost } from "./flow/EditView";
 import type { Log } from "./events";
 import { kinds, outline as readOutline, type Outline } from "./outline";
+import { showCrossing } from "./crossing";
 import { Player } from "./player";
 import { render, type Report, type Selection } from "./report";
 import { Serq } from "./serq";
@@ -135,6 +136,7 @@ async function redraw(runNow = false) {
   // the outline needs the text to parse, not to link: an edit can follow a link error
   currentOutline = outlined.ok ? readOutline(outlined.value, src) : null;
   if (currentOutline) editor.outlined = kinds(currentOutline);
+  showCrossing(currentOutline);
   compose.refresh();
   if (!drawn.ok) return fail(drawn.error);
   if (!irJson.ok) return fail(irJson.error);
