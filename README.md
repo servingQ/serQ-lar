@@ -42,11 +42,14 @@ or a pinch zooms the figure about the pointer, a drag pans it, a
 double-click fits it; the replay zooms with it.
 
 The Flow tab edits the text, too. It shows the deployment as nodes to
-drag and wire (React Flow), with a palette of parts beside them: Prefill,
-Decode, Delay, and pools of N engines (`queue D[N]`, a call choosing one),
-dragged onto the canvas as drafts, or onto a station, which then calls
-them; an arrow from the arrival or a station to a draft writes the queue
-and its call into the program. Its nodes are serQ's stations
+drag and wire (React Flow), with a sidebar of parts beside them, each
+dragged and dropped (a click does nothing): Engines (Prefill, Decode,
+Delay) and Pools of N engines (`queue D[N]`, a call choosing one), onto
+the canvas as drafts, or onto a station, which then calls them; memory
+Pools (KV blocks, request slots) onto an engine; an Arrow (a call) or a
+KV transfer (pull, push) onto a station, then a click on its other end.
+An arrow from the arrival or a station to a draft writes the queue and
+its call into the program. Its nodes are serQ's stations
 and arrows, where serQ placed them, each with an input on its left and an
 output on its right; an instance serQ draws as a panel (an engine with its
 NIC) is a box holding its members, dragged as one; each station lists its

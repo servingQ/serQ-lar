@@ -171,5 +171,18 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
   }
 }
 
+// the palette's KV copy arrows, drawn from one station to another: a pull, and a push with the source's call a leg of its own
+{
+  let src = example("vllm");
+  const P = queueDraft(src, "prefill", "P");
+  let e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: P });
+  if (typeof e !== "string") src = apply(src, e);
+  const D = queueDraft(src, "decode", "D");
+  e = connect(src, ol(src), { kind: "station", stage: "P" }, { kind: "draft", draft: D });
+  if (typeof e !== "string") src = apply(src, e);
+  check("arrows: KV copy P → D, a pull", src, copy(src, ol(src), "P", "D", "pull"), { stages: ["P.nic", "D.nic"], text: ["kvt.nixl_pull (P, D", "from P"] });
+  check("arrows: KV copy P → D, a push", src, copy(src, ol(src), "P", "D", "push"), { stages: ["P.nic", "D.nic"], text: ["kvt.nixl_push (P, D", "fork { P"] });
+}
+
 console.log(failed ? `${failed} FAILED` : "all edits ok");
 process.exit(failed ? 1 : 0);

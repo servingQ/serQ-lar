@@ -458,6 +458,8 @@ const editHost: EditHost = {
   instance: (id) => compose.makeInstance(id),
   nic: (id) => compose.nicDraft(id),
   pool: (id, name, kind, cap) => compose.declarePool(id, name, kind, cap),
+  copy: (from, to, mode) => compose.copyKv(from, to, mode),
+  say: (m, bad) => sayIt(m, bad),
   add(part) {
     const d = part.kind === "pool" ? compose.addPool(part.role, part.count) : compose.add(part.kind);
     return { draft: d, id: draftId(compose.draftList.indexOf(d)) };

@@ -6,9 +6,11 @@
 // moves with them. The arrows are routed by libavoid (route.ts) around the
 // nodes, none on top of another. A connection drawn between two handles is
 // handed to the page, which writes it into the text; serQ then draws the
-// figure again and this view follows it. The palette's parts, dropped on
-// the canvas, are drafts where they land; dropped on a station, the station
-// calls them.
+// figure again and this view follows it. The parts in the sidebar are
+// dragged and dropped, never clicked: an engine or a pool of engines on the
+// canvas is a draft where it lands, on a station called by it; a memory
+// pool on an engine is declared there; an arrow or a KV transfer on a
+// station starts there, and the station clicked next is its other end.
 
 import {
   Background,
@@ -33,7 +35,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { createContext, type DragEvent, type FormEvent, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, type DragEvent, type FormEvent, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Draft } from "../edit";
 import { type Graph, type GraphInstance, type GraphNode, SINK, SOURCE } from "./graph";
@@ -54,17 +56,42 @@ export interface EditHost {
   nic(id: string): void;
   /** Declare a memory pool in a station's queue, with its capacity (slots, or tokens of KV). */
   pool(id: string, name: string, kind: "slots" | "blocks", cap: string): void;
-  /** A part from the palette made a draft: the draft, and its node's id. */
+  /** A KV copy from one station's queue to another's, a pull or a push. */
+  copy(from: string, to: string, mode: "pull" | "push"): void;
+  /** A part from the sidebar made a draft: the draft, and its node's id. */
   add(part: Part): { draft: Draft; id: string };
+  /** A line for the viewer: what was done, or why it was not. */
+  say(message: string, bad?: boolean): void;
   /** Open the Code tab on where a node is written. */
   code(id: string): void;
 }
 
-/** What the palette makes: an engine, a delay, or a pool of `count` engines. */
+/** A node the sidebar makes: an engine, a delay, or a pool of `count` engines. */
 export type Part = { kind: "prefill" | "decode" | "delay" } | { kind: "pool"; role: "prefill" | "decode"; count: number };
+
+/** What a part in the sidebar does where it is dropped: a node (`Part`); a
+ * memory pool, on an engine; an arrow (a call) or a KV transfer, from a
+ * station, to the station clicked next. */
+type Tool = { kind: "node"; part: Part } | { kind: "memory"; pool: "blocks" | "slots" } | { kind: "arrow"; arrow: Arrow };
+type Arrow = "call" | "pull" | "push";
 
 /** The type a part is dragged as: the canvas takes nothing else. */
 const PART = "application/x-serq-part";
+
+/** Whether node `n` takes tool `t` dropped on it. */
+function takes(t: Tool, n: GraphNode): boolean {
+  if (t.kind === "node") return n.kind !== "sink" && n.kind !== "draft";
+  if (t.kind === "memory") return n.kind === "engine";
+  if (t.arrow === "call") return n.kind !== "sink" && n.kind !== "draft" && n.kind !== "nic";
+  return n.kind === "engine" || n.kind === "nic";
+}
+
+/** What an arrow being drawn says it wants next. */
+const WANTS: Record<Arrow, (from: string) => string> = {
+  call: (f) => `A call from ${f}: click the station or draft it calls`,
+  pull: (f) => `KV from ${f}, pulled: click the queue that reads it`,
+  push: (f) => `KV from ${f}, pushed: click the queue it goes to`,
+};
 
 const Host = createContext<EditHost | null>(null);
 
@@ -187,49 +214,75 @@ function Tools(props: { id: string; engine: boolean; inInstance: boolean; hasNic
   );
 }
 
-/** The parts: dragged onto the canvas, or clicked (on a phone, from the
- * keyboard) to be a draft under the deployment. A pool's size is set here. */
-function Palette({ make }: { make: (part: Part, at?: { x: number; y: number }) => void }) {
+/** The sidebar of parts, by what they are: each dragged and dropped onto
+ * the canvas (it does nothing clicked). A pool of engines' size is set here. */
+function Parts() {
   const [count, setCount] = useState(2);
   const n = Math.min(64, Math.max(1, Math.round(count) || 1));
-  const parts: { key: string; label: string; title: string; part: Part; note?: string }[] = [
-    { key: "prefill", label: "Prefill", title: "A prefill engine: a queue with its device, engine and pools", part: { kind: "prefill" } },
-    { key: "decode", label: "Decode", title: "A decode engine: a queue with its device, engine and pools", part: { kind: "decode" } },
-    { key: "delay", label: "Delay", title: "A delay stage: a wait outside the engines", part: { kind: "delay" } },
-    { key: "prefill", label: "Prefill pool", title: `A pool of ${n} prefill engines, a call choosing one (llm-d's InferencePool)`, part: { kind: "pool", role: "prefill", count: n }, note: `×${n}` },
-    { key: "decode", label: "Decode pool", title: `A pool of ${n} decode engines, a call choosing one (llm-d's InferencePool)`, part: { kind: "pool", role: "decode", count: n }, note: `×${n}` },
+  type Item = { key: string; label: string; hint: string; title: string; tool: Tool; note?: string };
+  const groups: { title: string; items: Item[]; extra?: ReactNode }[] = [
+    {
+      title: "Engines",
+      items: [
+        { key: "prefill", label: "Prefill", hint: "canvas or a station", title: "A prefill engine: a queue with its device, engine and pools", tool: { kind: "node", part: { kind: "prefill" } } },
+        { key: "decode", label: "Decode", hint: "canvas or a station", title: "A decode engine: a queue with its device, engine and pools", tool: { kind: "node", part: { kind: "decode" } } },
+        { key: "delay", label: "Delay", hint: "canvas or a station", title: "A delay stage: a wait outside the engines", tool: { kind: "node", part: { kind: "delay" } } },
+      ],
+    },
+    {
+      title: "Pools",
+      items: [
+        { key: "prefill", label: "Prefill pool", note: `×${n}`, hint: "canvas or a station", title: `A pool of ${n} prefill engines, a call choosing one (llm-d's InferencePool)`, tool: { kind: "node", part: { kind: "pool", role: "prefill", count: n } } },
+        { key: "decode", label: "Decode pool", note: `×${n}`, hint: "canvas or a station", title: `A pool of ${n} decode engines, a call choosing one (llm-d's InferencePool)`, tool: { kind: "node", part: { kind: "pool", role: "decode", count: n } } },
+        { key: "blocks", label: "KV blocks", hint: "on an engine", title: "A memory pool of KV blocks on an engine's device (one a device)", tool: { kind: "memory", pool: "blocks" } },
+        { key: "slots", label: "Request slots", hint: "on an engine", title: "A memory pool of request slots on an engine", tool: { kind: "memory", pool: "slots" } },
+      ],
+      extra: (
+        <label className="fparts-n">
+          engines in a pool <input type="number" min={1} max={64} value={count} onChange={(e) => setCount(Number(e.target.value))} aria-label="Engines in a pool" />
+        </label>
+      ),
+    },
+    {
+      title: "Arrows",
+      items: [{ key: "call", label: "Call", hint: "on a station, then click", title: "An arrow: the station dropped on calls the one clicked next", tool: { kind: "arrow", arrow: "call" } }],
+    },
+    {
+      title: "KV transfer",
+      items: [
+        { key: "pull", label: "KV pull", hint: "on the source, then click", title: "A KV copy over NIXL the reader pulls: drop on the source queue, click the reader", tool: { kind: "arrow", arrow: "pull" } },
+        { key: "push", label: "KV push", hint: "on the source, then click", title: "A KV copy over NIXL the source pushes: drop on the source queue, click the reader", tool: { kind: "arrow", arrow: "push" } },
+      ],
+    },
   ];
   return (
-    <Panel position="top-left" className="fpalette" aria-label="Parts">
-      <span className="eyebrow">Parts</span>
-      {parts.map((p) => (
-        <div
-          key={p.label}
-          className={`fpart k-${p.key}`}
-          role="button"
-          tabIndex={0}
-          draggable
-          title={`${p.title}. Drag onto the canvas, or onto a station to call it from there`}
-          onDragStart={(e) => {
-            e.dataTransfer.setData(PART, JSON.stringify(p.part));
-            e.dataTransfer.effectAllowed = "copy";
-          }}
-          onClick={() => make(p.part)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter" && e.key !== " ") return;
-            e.preventDefault();
-            make(p.part);
-          }}
-        >
-          {p.label}
-          {p.note && <small>{p.note}</small>}
-        </div>
+    <aside className="fparts" aria-label="Parts: drag one onto the canvas">
+      {groups.map((g) => (
+        <section key={g.title}>
+          <h3 className="eyebrow">{g.title}</h3>
+          {g.items.map((p) => (
+            <div
+              key={p.label}
+              className={`fpart k-${p.key}`}
+              draggable
+              title={`${p.title}. Drag it ${p.hint === "canvas or a station" ? "onto the canvas, or onto a station to call it from there" : p.hint === "on an engine" ? "onto an engine" : "onto a station, then click the other end"}.`}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(PART, JSON.stringify(p.tool));
+                e.dataTransfer.effectAllowed = "copy";
+              }}
+            >
+              <i aria-hidden="true" />
+              <span>
+                {p.label}
+                {p.note && <small className="fpart-note">{p.note}</small>}
+              </span>
+              <small>{p.hint}</small>
+            </div>
+          ))}
+          {g.extra}
+        </section>
       ))}
-      <label>
-        pool of <input type="number" min={1} max={64} value={count} onChange={(e) => setCount(Number(e.target.value))} aria-label="Engines in a pool" />
-      </label>
-      <p>Drop on a station to call it from there; an arrow from a handle places a draft.</p>
-    </Panel>
+    </aside>
   );
 }
 
@@ -467,36 +520,64 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
     [host, flow, setNodes],
   );
 
-  /** A part made a draft: where it was dropped (`at`, on the screen); or,
-   * dropped on a station, called from it at once; clicked, where drafts wait. */
+  /** A node part dropped (`at`, on the screen): a draft there; on a
+   * station `on`, called from it at once, where serQ's layout puts it. */
   const make = useCallback(
-    (part: Part, at?: { x: number; y: number }) => {
+    (part: Part, at: { x: number; y: number }, on: SerqNodeT | undefined) => {
       const { draft, id } = host.add(part);
-      if (!at) return;
+      if (on) return host.connect(on.id, id);
       const p = flow.screenToFlowPosition(at);
       dropped.set(draftName(draft), { x: p.x - W / 2, y: p.y - H / 2 });
-      const on = (flow.getIntersectingNodes({ x: p.x, y: p.y, width: 1, height: 1 }) as FlowNode[]).find(
-        (n): n is SerqNodeT => n.type === "serq" && n.data.node.kind !== "sink" && n.data.node.kind !== "draft",
-      );
-      if (on) {
-        // called from a station, it goes where serQ's layout puts it in the way
-        dropped.delete(draftName(draft));
-        host.connect(on.id, id);
-      }
     },
     [host, flow],
   );
+
+  /** A memory pool dropped on engine `on`: declared in its queue, by a name it has not got. */
+  const memory = useCallback(
+    (pool: "blocks" | "slots", on: SerqNodeT) => {
+      const n = on.data.node;
+      if (pool === "blocks" && n.pools?.some((q) => q.kind === "blocks")) return host.say(`${n.label}'s device has its KV pool: serQ takes one a device.`, true);
+      const stem = pool === "blocks" ? "kv" : "waitq";
+      const taken = new Set((n.pools ?? []).map((q) => q.name));
+      let name = stem;
+      for (let i = 2; taken.has(name); i++) name = `${stem}${i}`;
+      host.pool(on.id.replace(/\.nic$/, ""), name, pool, pool === "blocks" ? "160000" : "16");
+    },
+    [host],
+  );
+
+  /** An arrow being drawn: from where its part was dropped, to the next station clicked; and where the pointer is. */
+  const [wire, setWire] = useState<{ arrow: Arrow; from: string } | null>(null);
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  const pane = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!wire) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setWire(null);
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [wire]);
+  /** The arrow drawn to node `to`: written into the text. */
+  const finish = (to: string) => {
+    if (!wire) return;
+    setWire(null);
+    if (wire.arrow === "call") host.connect(wire.from, to);
+    else host.copy(wire.from, to, wire.arrow);
+  };
+
+  /** The tool being dragged, and the node under it that takes it. */
   const [over, setOver] = useState<string | null>(null);
-  const hit = (e: DragEvent) => {
+  const dragged = useRef<Tool | null>(null);
+  const under = (e: DragEvent | MouseEvent, t: Tool | null) => {
     const p = flow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-    const n = (flow.getIntersectingNodes({ x: p.x, y: p.y, width: 1, height: 1 }) as FlowNode[]).find((n) => n.type === "serq" && n.data.node.kind !== "sink" && n.data.node.kind !== "draft");
-    return n?.id ?? null;
+    return (flow.getIntersectingNodes({ x: p.x, y: p.y, width: 1, height: 1 }) as FlowNode[]).find(
+      (n): n is SerqNodeT => n.type === "serq" && (t ? takes(t, n.data.node) : true),
+    );
   };
   const onDragOver = (e: DragEvent) => {
     if (!e.dataTransfer.types.includes(PART)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
-    const id = hit(e);
+    const id = under(e, dragged.current)?.id ?? null;
     if (id !== over) setOver(id);
   };
   const onDrop = (e: DragEvent) => {
@@ -504,9 +585,46 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
     const raw = e.dataTransfer.getData(PART);
     if (!raw) return;
     e.preventDefault();
-    make(JSON.parse(raw) as Part, { x: e.clientX, y: e.clientY });
+    const t = JSON.parse(raw) as Tool;
+    const on = under(e, t);
+    if (t.kind === "node") return make(t.part, { x: e.clientX, y: e.clientY }, on);
+    if (!on) return host.say(t.kind === "memory" ? "A memory pool goes on an engine: drop it on one." : t.arrow === "call" ? "An arrow starts at a station: drop it on one." : "A KV transfer starts at the queue whose KV it copies: drop it on an engine.", true);
+    if (t.kind === "memory") return memory(t.pool, on);
+    setPointer({ x: e.clientX, y: e.clientY });
+    setWire({ arrow: t.arrow, from: on.id });
   };
-  const shown = useMemo(() => nodes.map((n) => (n.id === over ? { ...n, className: "drop-on" } : n.className ? { ...n, className: undefined } : n)), [nodes, over]);
+  // the parts' drag starts outside the canvas: what it carries is read when it starts
+  useEffect(() => {
+    const start = (e: globalThis.DragEvent) => {
+      const raw = (e.target as Element | null)?.closest?.(".fpart") ? e.dataTransfer?.getData(PART) : "";
+      dragged.current = raw ? (JSON.parse(raw) as Tool) : null;
+    };
+    const end = () => {
+      dragged.current = null;
+      setOver(null);
+    };
+    window.addEventListener("dragstart", start);
+    window.addEventListener("dragend", end);
+    return () => {
+      window.removeEventListener("dragstart", start);
+      window.removeEventListener("dragend", end);
+    };
+  }, []);
+  const shown = useMemo(
+    () => nodes.map((n) => (n.id === over || n.id === wire?.from ? { ...n, className: "drop-on" } : n.className ? { ...n, className: undefined } : n)),
+    [nodes, over, wire],
+  );
+
+  /** Where the arrow being drawn starts, on the pane: the right of its node. */
+  const start = (() => {
+    if (!wire || !pane.current) return null;
+    const n = nodes.find((x) => x.id === wire.from);
+    if (!n) return null;
+    const a = absolute(nodes, n);
+    const s = flow.flowToScreenPosition({ x: a.x + sizeOf(n).w, y: a.y + sizeOf(n).h / 2 });
+    const r = pane.current.getBoundingClientRect();
+    return { x: s.x - r.left, y: s.y - r.top, r };
+  })();
 
   const serqLayout = useCallback(() => {
     save(host.layoutKey(), {});
@@ -517,42 +635,66 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
   }, [graph, host, place, setNodes, flow]);
 
   return (
-    <ReactFlow
-      nodes={shown}
-      edges={routed}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      onNodeDragStop={keep}
-      onConnect={(c: Connection) => c.source && c.target && host.connect(c.source, c.target)}
-      isValidConnection={(c) => c.source !== c.target && c.target !== SOURCE && c.source !== SINK}
-      onNodeClick={(_, n) => host.select(n.type === "instance" ? (n.data.instance.members.find((m) => !m.endsWith(".nic")) ?? null) : n.id)}
-      onEdgeClick={(_, e) => {
-        const poster = (e.data as { poster?: string } | undefined)?.poster;
-        if (poster) host.select(poster);
-      }}
-      onPaneClick={() => host.select(null)}
-      onNodesDelete={(ns) => host.remove(ns.filter((n) => n.type === "serq").map((n) => n.id))}
-      deleteKeyCode={["Delete", "Backspace"]}
-      onDragOver={onDragOver}
-      onDragLeave={() => setOver(null)}
-      onDrop={onDrop}
-      colorMode="system"
-      minZoom={0.1}
-      maxZoom={4}
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background gap={32} size={1} />
-      <Controls />
-      <MiniMap pannable zoomable />
-      <Palette make={make} />
-      <Panel position="top-right">
-        <button className="flow-btn" onClick={serqLayout} title="Put every node back where serQ's figure has it">
-          serQ's layout
-        </button>
-      </Panel>
-    </ReactFlow>
+    <div className="fedit">
+      <Parts />
+      <div
+        ref={pane}
+        className={`fcanvas${wire ? " wiring" : ""}`}
+        onMouseMove={(e) => {
+          if (wire) setPointer({ x: e.clientX, y: e.clientY });
+        }}
+      >
+        <ReactFlow
+          nodes={shown}
+          edges={routed}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeDragStop={keep}
+          onConnect={(c: Connection) => c.source && c.target && host.connect(c.source, c.target)}
+          isValidConnection={(c) => c.source !== c.target && c.target !== SOURCE && c.source !== SINK}
+          onNodeClick={(_, n) => {
+            const id = n.type === "instance" ? (n.data.instance.members.find((m) => !m.endsWith(".nic")) ?? null) : n.id;
+            if (wire) return id && finish(id);
+            host.select(id);
+          }}
+          onEdgeClick={(_, e) => {
+            const poster = (e.data as { poster?: string } | undefined)?.poster;
+            if (poster) host.select(poster);
+          }}
+          onPaneClick={() => (wire ? setWire(null) : host.select(null))}
+          onNodesDelete={(ns) => host.remove(ns.filter((n) => n.type === "serq").map((n) => n.id))}
+          deleteKeyCode={["Delete", "Backspace"]}
+          onDragOver={onDragOver}
+          onDragLeave={() => setOver(null)}
+          onDrop={onDrop}
+          colorMode="system"
+          minZoom={0.1}
+          maxZoom={4}
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background gap={32} size={1} />
+          <Controls />
+          <MiniMap pannable zoomable />
+          <Panel position="top-right">
+            <button className="flow-btn" onClick={serqLayout} title="Put every node back where serQ's figure has it">
+              serQ's layout
+            </button>
+          </Panel>
+          {wire && (
+            <Panel position="top-center" className="fwire-say">
+              {WANTS[wire.arrow](wire.from)} · <kbd>Esc</kbd> cancels
+            </Panel>
+          )}
+        </ReactFlow>
+        {start && pointer && (
+          <svg className={`fwire k-${wire!.arrow}`} aria-hidden="true">
+            <line x1={start.x} y1={start.y} x2={pointer.x - start.r.left} y2={pointer.y - start.r.top} />
+          </svg>
+        )}
+      </div>
+    </div>
   );
 }
 
