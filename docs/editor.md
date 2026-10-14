@@ -49,14 +49,12 @@ See [upstream.md](upstream.md), U10.
    (`flow/replay.ts`).
 3. **Parts** (the Flow tab's sidebar), each dragged and dropped; a
    click does nothing.
-   - *Engines*: Engine, Engine pool, Delay: a draft, dropped on the
-     canvas, where it stays until an arrow places it; dropped on a
-     station, that station calls it at once and serQ's layout places it.
-     An engine starts a decoder (a whole engine: it prefills locally) and
-     is made a prefiller or a decoder on its toolbar (6). An engine pool
-     is N engines (llm-d's InferencePool), a family `queue D[N]`; its
-     call chooses a member (`choose k in N by (work(D[k]))`); N is set
-     in the sidebar, and in the text after.
+   - *Engines*: Engine, Delay: a draft, dropped on the canvas, where it
+     stays until an arrow places it; dropped on a station, that station
+     calls it at once and serQ's layout places it. An engine starts
+     aggregated (`queue E : agg`: it prefills and decodes) and is made a
+     prefiller or a decoder on its toolbar (6). N engines, a family
+     `queue E[N]`, are an instance (7) sized in the text.
    - *Memory pools*: KV blocks, Request slots: a memory pool, dropped on
      an engine, declared there (7) by a name its queue has not got.
    - *Arrows*: Call, dropped on the arrival or a station: an arrow from
@@ -64,7 +62,9 @@ See [upstream.md](upstream.md), U10.
      its end (5). Esc, or a click on the empty canvas, drops it.
    - *KV transfer*: dropped on the source's engine, the reader clicked
      next: the copy (`copy` in `edit.ts`), with the NICs, the connector
-     and the relation, a pull; the copy clicked is made a push (6).
+     and the relation, a pull; the reader made a decoder (its entry
+     `decode (prompt) from P`, its role `decode`); the copy clicked is
+     made a push (6).
 4. **The Edit view** (React Flow, the Flow tab). serQ's graph as nodes to
    drag and wire: the nodes and arrows are read off serQ's figure
    (`data-node`, `data-from`, `data-to`, `data-copy`), the kinds off the IR,
@@ -104,13 +104,16 @@ See [upstream.md](upstream.md), U10.
    the `use`s, the reader's `connector` and its entry and call `from` the
    source.
 6. **Toolbars** (click a node or a copy in the Edit view; nothing above
-   the canvas). An engine, or a draft engine: Prefill ⇄ Decode. A draft
-   is written again under its role's name (`P`, `D`); a queue written
-   already has its head's role, its engine's scheduler, its entry and
-   its calls' verb rewritten (`retype` in `edit.ts`), unless it is in a
-   KV copy, which its entry leases or reads by, or its entry is not the
+   the canvas). An engine, or a draft engine: Agg · Prefill · Decode,
+   serQ's roles `agg`, `prefill` and `decode`. Between Agg and Prefill,
+   a draft is written again under its role's name (`E`, `P`); a queue
+   written already has its head's role, its engine's scheduler, its entry
+   and its calls' verb rewritten (`retype` in `edit.ts`), unless it is in
+   a KV copy, which its entry leases or reads by, or its entry is not the
    one `prefill (prompt)` or `decode (prompt)`: those are left to the
-   text. An engine in no instance: Make instance (7). A KV copy: pull ⇄
+   text. Decode on an aggregated engine is the KV copy from the one
+   prefiller there is (5); with none or several, the copy is drawn by
+   hand. A draft is made a decoder once placed. An engine in no instance: Make instance (7). A KV copy: pull ⇄
    push (a push dispatches the source's call with `fork`, which serQ
    requires). Delete removes a station (its queue, its calls and its
    copies; serQ names whatever else still refers to it); an instance's

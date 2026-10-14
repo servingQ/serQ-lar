@@ -67,15 +67,15 @@ function diff(a: string, b: string): string {
   return y.slice(Math.max(0, i - 2), y.length - j + 2).map((l) => "  | " + l).join("\n");
 }
 
-const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draft => {
+const queueDraft = (src: string, role: snip.Own, stem: string): Draft => {
   const name = fresh(src, stem);
-  return { kind: "queue", name, role, family: null, text: role === "prefill" ? snip.prefill(name) : snip.decode(name, undefined, outputParam(ol(src)) ?? undefined), relations: [] };
+  return { kind: "queue", name, role, family: null, text: role === "prefill" ? snip.prefill(name) : snip.agg(name, undefined, outputParam(ol(src)) ?? undefined), relations: [] };
 };
 
-// vllm.sq: one engine, no queue; a decoder put before it from the arrival
+// vllm.sq: one engine, no queue; an aggregated engine put before it from the arrival
 {
   const src = example("vllm");
-  check("vllm: arrival → new decoder", src, connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: queueDraft(src, "decode", "E") }), { stages: ["E", "vllm"] });
+  check("vllm: arrival → new aggregated engine", src, connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: queueDraft(src, "agg", "E") }), { stages: ["E", "vllm"] });
   check("vllm: arrival → new delay", src, connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: { kind: "stage", name: "hop", text: snip.delay("hop") } }), { stages: ["hop", "vllm"] });
 }
 
@@ -83,21 +83,21 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
 {
   const src = example("vllm");
   const at = src.lastIndexOf("  server ");
-  check("vllm: an engine nothing reaches", src, [{ at: [at, at], text: snip.decode("E", undefined, outputParam(ol(src)) ?? undefined) + "\n" }], { refused: /run by no statement/ });
+  check("vllm: an engine nothing reaches", src, [{ at: [at, at], text: snip.agg("E", undefined, outputParam(ol(src)) ?? undefined) + "\n" }], { refused: /run by no statement/ });
 }
 
 // a pool of engines (a family, `queue D[3]`): placed by an arrow, its call chooses a member
 {
-  const pool = (src: string, role: "prefill" | "decode", stem: string, n: number): Draft => {
+  const pool = (src: string, role: snip.Own, stem: string, n: number): Draft => {
     const name = fresh(src, stem);
-    return { kind: "queue", name, role, family: String(n), text: role === "prefill" ? snip.prefill(name, n) : snip.decode(name, n, outputParam(ol(src)) ?? undefined), relations: [] };
+    return { kind: "queue", name, role, family: String(n), text: role === "prefill" ? snip.prefill(name, n) : snip.agg(name, n, outputParam(ol(src)) ?? undefined), relations: [] };
   };
   let src = example("vllm");
-  const e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: pool(src, "decode", "E", 3) });
-  check("vllm: arrival → a pool of 3 decoders", src, e, { stages: ["E", "vllm"], text: ["queue E[3] : decode", " in 3 by (work(E[", "].decode ("] });
+  const e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: pool(src, "agg", "E", 3) });
+  check("vllm: arrival → a pool of 3 aggregated engines", src, e, { stages: ["E", "vllm"], text: ["queue E[3] : agg", " in 3 by (work(E[", "].decode ("] });
   if (typeof e !== "string") {
     src = apply(src, e);
-    check("vllm: the pool grows to 4", src, resize(src, ol(src), "E", 1), { stages: ["E"], text: ["queue E[4] : decode"] });
+    check("vllm: the pool grows to 4", src, resize(src, ol(src), "E", 1), { stages: ["E"], text: ["queue E[4] : agg"] });
   }
   const l = example("llmd_nixl_pull");
   check("llmd: P → a pool of 2 prefillers", l, connect(l, ol(l), { kind: "station", stage: "P" }, { kind: "draft", draft: pool(l, "prefill", "Q", 2) }), { stages: ["Q", "P", "D"], text: ["queue Q[2] : prefill"] });
@@ -107,7 +107,7 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
 {
   const src = example("llmd_nixl_pull");
   const o = ol(src);
-  check("llmd: P → new decoder", src, connect(src, o, { kind: "station", stage: "P" }, { kind: "draft", draft: queueDraft(src, "decode", "E") }), { stages: ["E", "P", "D"] });
+  check("llmd: P → new aggregated engine", src, connect(src, o, { kind: "station", stage: "P" }, { kind: "draft", draft: queueDraft(src, "agg", "E") }), { stages: ["E", "P", "D"] });
   check("llmd: pull → push", src, toggle(src, o, o.relations[0]), { text: ["kvt.nixl_push (P, D"] });
   check("llmd: one more prefiller", src, resize(src, o, "P", 1), { text: ["let NP = 3;"] });
   check("llmd: one decoder fewer", src, resize(src, o, "D", -1), { text: ["let ND = 1;"] });
@@ -131,7 +131,7 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
   check("llmd: a second KV pool on P's device", l, declarePool(l, ol(l), "P", "kv2", "blocks", "1000"), { refused: /both on/ });
   check("llmd: a pool P has", l, declarePool(l, ol(l), "P", "kv", "blocks", "1000"), { refused: /already/ });
   const v = example("vllm");
-  const e = connect(v, ol(v), { kind: "arrival" }, { kind: "draft", draft: queueDraft(v, "decode", "D") });
+  const e = connect(v, ol(v), { kind: "arrival" }, { kind: "draft", draft: queueDraft(v, "agg", "D") });
   if (typeof e !== "string") {
     const s = apply(v, e);
     check("palette: D's pool of waitq slots", s, declarePool(s, ol(s), "D", "waitq", "slots", "4"), { stages: ["D"], text: ["waitq cap 4;"] });
@@ -152,19 +152,19 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
   }
 }
 
-// built up from nothing but the palette: a prefiller, a decoder after it, the copy between them
+// built up from nothing but the palette: a prefiller, an aggregated engine after it, the copy between them making it a decoder
 {
   let src = example("vllm");
   const P = queueDraft(src, "prefill", "P");
   let e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: P });
   check("palette: arrival → prefiller", src, e, { stages: ["P"] });
   if (typeof e !== "string") src = apply(src, e);
-  const D = queueDraft(src, "decode", "D");
+  const D = queueDraft(src, "agg", "D");
   e = connect(src, ol(src), { kind: "station", stage: "P" }, { kind: "draft", draft: D });
-  check("palette: prefiller → decoder", src, e, { stages: ["P", "D"] });
+  check("palette: prefiller → aggregated engine", src, e, { stages: ["P", "D"] });
   if (typeof e !== "string") src = apply(src, e);
   e = connect(src, ol(src), { kind: "station", stage: "D" }, { kind: "draft", draft: { kind: "nic", queue: "P" } });
-  check("palette: P's NIC → D, a pull", src, e, { stages: ["P", "D", "P.nic", "D.nic"], text: ["kvt.nixl_pull (P, D", "from P"] });
+  check("palette: P's NIC → D, a pull", src, e, { stages: ["P", "D", "P.nic", "D.nic"], text: ["kvt.nixl_pull (P, D", "queue D : decode", "decode (prompt) from P {", "from P;"] });
   if (typeof e !== "string") {
     src = apply(src, e);
     const o = ol(src);
@@ -175,14 +175,14 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
 // an engine clicked takes the other role: its head, scheduler, entry and calls; one in a KV copy is left to the text
 {
   let src = example("vllm");
-  const e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: queueDraft(src, "decode", "E") });
+  const e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: queueDraft(src, "agg", "E") });
   if (typeof e !== "string") src = apply(src, e);
   const p = retype(src, ol(src), "E", "prefill");
-  check("roles: decoder E made a prefiller", src, p, { stages: ["E", "vllm"], text: ["queue E : prefill", "lease kv (inf)", "E.prefill ("] });
+  check("roles: aggregated E made a prefiller", src, p, { stages: ["E", "vllm"], text: ["queue E : prefill", "lease kv (inf)", "E.prefill ("] });
   if (typeof p !== "string") {
     const back = apply(src, p);
-    check("roles: and back to a decoder", back, retype(back, ol(back), "E", "decode"), { stages: ["E"], text: ["queue E : decode", "E (prompt, output);", "E.decode ("] });
-    const again = apply(back, retype(back, ol(back), "E", "decode") as Edit[]);
+    check("roles: and back to aggregated", back, retype(back, ol(back), "E", "agg"), { stages: ["E"], text: ["queue E : agg", "E (prompt, output);", "E.decode ("] });
+    const again = apply(back, retype(back, ol(back), "E", "agg") as Edit[]);
     if (again !== src) {
       failed++;
       console.log("FAIL roles: there and back is not the text it started from");
@@ -190,11 +190,20 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
     } else console.log("ok   roles: there and back is the same text");
   }
   let f = example("vllm");
-  const pool = connect(f, ol(f), { kind: "arrival" }, { kind: "draft", draft: { kind: "queue", name: "E", role: "decode", family: "3", text: snip.decode("E", 3, outputParam(ol(f)) ?? undefined), relations: [] } });
+  const pool = connect(f, ol(f), { kind: "arrival" }, { kind: "draft", draft: { kind: "queue", name: "E", role: "agg", family: "3", text: snip.agg("E", 3, outputParam(ol(f)) ?? undefined), relations: [] } });
   if (typeof pool !== "string") f = apply(f, pool);
-  check("roles: a pool of 3 decoders made prefillers", f, retype(f, ol(f), "E", "prefill"), { stages: ["E"], text: ["queue E[3] : prefill", "].prefill ("] });
+  check("roles: a pool of 3 aggregated engines made prefillers", f, retype(f, ol(f), "E", "prefill"), { stages: ["E"], text: ["queue E[3] : prefill", "].prefill ("] });
   const l = example("llmd_nixl_pull");
   check("roles: a prefiller in a KV copy", l, retype(l, ol(l), "P", "decode"), { refused: /KV copy/ });
+  check("roles: llm-d's pod (agg, decode) reads its KV", l, retype(l, ol(l), "D", "agg"), { refused: /KV copy/ });
+  // a decoder is the KV copy from the one prefiller there is; with none, nothing to read from
+  check("roles: aggregated E made a decoder, no prefiller", src, retype(src, ol(src), "E", "decode"), { refused: /there is none/ });
+  let pd = example("vllm");
+  const e1 = connect(pd, ol(pd), { kind: "arrival" }, { kind: "draft", draft: queueDraft(pd, "prefill", "P") });
+  if (typeof e1 !== "string") pd = apply(pd, e1);
+  const e2 = connect(pd, ol(pd), { kind: "station", stage: "P" }, { kind: "draft", draft: queueDraft(pd, "agg", "E") });
+  if (typeof e2 !== "string") pd = apply(pd, e2);
+  check("roles: aggregated E made a decoder of P's KV", pd, retype(pd, ol(pd), "E", "decode"), { stages: ["P", "E", "P.nic", "E.nic"], text: ["queue E : decode", "decode (prompt) from P {", "kvt.nixl_pull (P, E", "E.decode (input) from P;"] });
 }
 
 // the palette's KV copy arrows, drawn from one station to another: a pull, and a push with the source's call a leg of its own
@@ -203,7 +212,7 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
   const P = queueDraft(src, "prefill", "P");
   let e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: P });
   if (typeof e !== "string") src = apply(src, e);
-  const D = queueDraft(src, "decode", "D");
+  const D = queueDraft(src, "agg", "D");
   e = connect(src, ol(src), { kind: "station", stage: "P" }, { kind: "draft", draft: D });
   if (typeof e !== "string") src = apply(src, e);
   check("arrows: KV copy P → D, a pull", src, copy(src, ol(src), "P", "D", "pull"), { stages: ["P.nic", "D.nic"], text: ["kvt.nixl_pull (P, D", "from P"] });

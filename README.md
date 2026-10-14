@@ -50,13 +50,13 @@ replay goes with it.
 
 The Flow tab edits the text, too. It shows the deployment as nodes to
 drag and wire (React Flow), with a sidebar of parts beside them, each
-dragged and dropped (a click does nothing): Engines (an engine, a pool
-of N engines, `queue D[N]` with a call choosing one, a delay) onto the
-canvas as drafts, or onto a station, which then calls them; Memory
-pools (KV blocks, request slots) onto an engine; an Arrow (a call) or a
-KV transfer onto a station, then a click on its other end. Nothing sits
-above the canvas: an engine clicked is made a prefiller or a decoder, a
-KV transfer clicked a pull or a push.
+dragged and dropped (a click does nothing): Engines (an engine, a delay)
+onto the canvas as drafts, or onto a station, which then calls them;
+Memory pools (KV blocks, request slots) onto an engine; an Arrow (a
+call) or a KV transfer onto a station, then a click on its other end.
+Nothing sits above the canvas: an engine clicked is made aggregated
+(serQ's `agg`, as it starts), a prefiller or a decoder, a KV transfer
+clicked a pull or a push.
 An arrow from the arrival or a station to a draft writes the queue and
 its call into the program. Its nodes are serQ's stations
 and arrows, where serQ placed them, each with an input on its left and an

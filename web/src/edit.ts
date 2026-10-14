@@ -151,7 +151,7 @@ function wayBody(ol: Outline): Range | null {
 
 // ------------------------------------------------------------ calls ----
 
-const VERB: Record<string, string> = { gateway: "route", prefill: "prefill", decode: "decode", link: "transfer" };
+const VERB: Record<string, string> = { gateway: "route", prefill: "prefill", agg: "decode", decode: "decode", link: "transfer" };
 
 /** The statements that send a request to queue `name` of `role` (`family` members), passing `arg`. */
 function callText(src: string, name: string, role: string, family: string | null, arg: string, from = ""): string {
@@ -282,12 +282,20 @@ export function copy(src: string, ol: Outline, source: string, reader: string, m
     const sched = /\n([ \t]*)scheduler\b/.exec(body);
     edits.push(sched ? before(src, engine.body[0] + sched.index + 1 + sched[1].length, snip.connector(source)) : last(src, engine.body, snip.connector(source)));
   }
-  // the reader's entry for a request whose KV comes from the source
+  // the reader becomes a decoder: its local entry reads the KV from the
+  // source (`decode (prompt) from P`), and its role is serQ's for that entry
   if (!R.members.some((m) => m.kind === "entry" && m.from === source)) {
     const local = R.members.find((m) => m.kind === "entry" && !m.from);
     if (!local) return `\`${reader}\` has no entry to read the KV into`;
-    const text = src.slice(local.range[0], local.range[1]).replace(/^(\s*\w+\s*\([^)]*\))/, `$1 from ${source}`);
-    edits.push(after(src, local.range[1], text));
+    const header = /^\s*\w+\s*\([^)]*\)/.exec(src.slice(local.range[0], local.range[1]));
+    if (!header) return `${reader}'s entry is not written where serQ's outline says`;
+    const end = local.range[0] + header[0].length;
+    edits.push({ at: [end, end], text: ` from ${source}` });
+    if (R.roles.includes("agg")) {
+      const role = roleEdit(src, R, "agg", "decode");
+      if (typeof role === "string") return role;
+      edits.push(role);
+    }
   }
   // the relation, after the later of the two queues and any relation there is
   const anchor = Math.max(S.range[1], R.range[1], ...ol.relations.map((r) => r.range[1]));
@@ -336,25 +344,41 @@ function legs(src: string, ol: Outline, source: string, fork: boolean): Edit[] {
   return out;
 }
 
-/** Make queue `q` an engine of `role`, a prefiller or a decoder: the role
- * its head declares, its engine's scheduler, its entry (snippets.ts), and the
- * verb its calls send by. A queue in a KV copy reads or leases by its
- * entry's role, and an entry written by hand is the writer's: both are left
- * to the text. */
+/** The engine role queue `q` plays: a decoder's where it reads a
+ * prefiller's KV (llm-d's pod plays `agg, decode`), else an aggregated
+ * engine's or a prefiller's. */
+export function engineRole(q: Queue): snip.Role | null {
+  return (["decode", "agg", "prefill"] as const).find((r) => q.roles.includes(r)) ?? null;
+}
+
+/** Make queue `q` an engine of `role`: an aggregated engine or a
+ * prefiller, the role its head declares, its engine's scheduler, its entry
+ * (snippets.ts), and the verb its calls send by; a decoder, the KV copy
+ * from the one prefiller there is (`copy`), which makes its reader one. A
+ * queue in a KV copy reads or leases by its entry's role, and an entry
+ * written by hand is the writer's: both are left to the text. */
 export function retype(src: string, ol: Outline, q: string, role: snip.Role): Edit[] | string {
   const Q = ol.queues.find((x) => x.name === q);
   if (!Q) return `\`${q}\` is no queue`;
-  const was = Q.roles.find((r): r is snip.Role => r === "prefill" || r === "decode");
-  if (!was) return `\`${q}\` is neither a prefiller nor a decoder: its role is written in the text`;
+  const was = engineRole(Q);
+  if (!was) return `\`${q}\` is no engine of a role (agg, prefill or decode): its role is written in the text`;
   if (was === role) return [];
   if (ol.relations.some((r) => r.source === q || r.reader === q)) return `${q} is in a KV copy, which its entry leases or reads by: change its role in the text`;
+  if (role === "decode") {
+    if (was !== "agg") return `a decoder reads the KV a prefiller leased: make ${q} an aggregated engine first`;
+    const prefillers = ol.queues.filter((x) => x.name !== q && x.roles.includes("prefill"));
+    if (prefillers.length !== 1)
+      return prefillers.length
+        ? `a decoder reads its KV from a prefiller: drag a KV copy to ${q} from the one it reads (${prefillers.map((x) => x.name).join(", ")})`
+        : `a decoder reads its KV from a prefiller, and there is none: add one first`;
+    return copy(src, ol, prefillers[0].name, q, "pull");
+  }
   const entries = Q.members.filter((m) => m.kind === "entry");
-  if (entries.length !== 1 || entries[0].from || entries[0].name !== was) return `${q}'s entries are not one \`${was} (prompt)\`: change its role in the text`;
+  if (entries.length !== 1 || entries[0].from || entries[0].name !== VERB[was]) return `${q}'s entries are not one \`${VERB[was]} (prompt)\`: change its role in the text`;
   const edits: Edit[] = [];
-  const head = new RegExp(`^(\\s*queue\\s+${q}\\b[^:{]*:[^{]*?)\\b${was}\\b`).exec(src.slice(Q.range[0], Q.body[0]));
-  if (!head) return `\`queue ${q} : ${was}\` is not written where serQ's outline says`;
-  const at = Q.range[0] + head[1].length;
-  edits.push({ at: [at, at + was.length], text: role });
+  const head = roleEdit(src, Q, was, role);
+  if (typeof head === "string") return head;
+  edits.push(head);
   const engine = Q.members.find((m) => m.kind === "engine");
   if (engine?.body) {
     const sched = /\bscheduler\s*\{/.exec(src.slice(engine.body[0], engine.body[1]));
@@ -367,11 +391,21 @@ export function retype(src: string, ol: Outline, q: string, role: snip.Role): Ed
   }
   const e = entries[0];
   edits.push({ at: e.range, text: reindent(snip.entry(role, q, outputParam(ol) ?? undefined), indentOf(src, e.range[0])).trimStart() });
-  for (const c of callsOf(ol, q)) {
-    const m = new RegExp(`\\.\\s*${was}\\b`).exec(src.slice(c.range[0], c.range[1]));
-    if (m) edits.push({ at: [c.range[0] + m.index + m[0].length - was.length, c.range[0] + m.index + m[0].length], text: role });
-  }
+  const [from, to] = [VERB[was], VERB[role]];
+  if (from !== to)
+    for (const c of callsOf(ol, q)) {
+      const m = new RegExp(`\\.\\s*${from}\\b`).exec(src.slice(c.range[0], c.range[1]));
+      if (m) edits.push({ at: [c.range[0] + m.index + m[0].length - from.length, c.range[0] + m.index + m[0].length], text: to });
+    }
   return edits;
+}
+
+/** Role `was` in queue `Q`'s head (`queue Q[N] : was {`) made `role`. */
+function roleEdit(src: string, Q: Queue, was: string, role: string): Edit | string {
+  const head = new RegExp(`^(\\s*queue\\s+${Q.name}\\b[^:{]*:[^{]*?)\\b${was}\\b`).exec(src.slice(Q.range[0], Q.body[0]));
+  if (!head) return `\`queue ${Q.name} : ${was}\` is not written where serQ's outline says`;
+  const at = Q.range[0] + head[1].length;
+  return { at: [at, at + was.length], text: role };
 }
 
 /** The brace closing the one at `open`, or -1. */

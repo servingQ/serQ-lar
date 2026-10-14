@@ -449,7 +449,7 @@ const editHost: EditHost = {
   setRole: (id, role) => compose.setRole(compose.draftList.find((_, i) => draftId(i) === id) ?? family(id), role),
   say: (m, bad) => sayIt(m, bad),
   add(part) {
-    const d = part.kind === "pool" ? compose.addPool(part.count) : compose.add(part.kind);
+    const d = compose.add(part.kind);
     return { draft: d, id: draftId(compose.draftList.indexOf(d)) };
   },
   code(id) {

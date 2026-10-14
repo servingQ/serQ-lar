@@ -7,11 +7,11 @@
 // nodes, none on top of another. A connection drawn between two handles is
 // handed to the page, which writes it into the text; serQ then draws the
 // figure again and this view follows it. The parts in the sidebar are
-// dragged and dropped, never clicked: an engine or a pool of engines on the
-// canvas is a draft where it lands, on a station called by it; a memory
-// pool on an engine is declared there; an arrow or a KV transfer on a
-// station starts there, and the station clicked next is its other end. An
-// engine clicked is made a prefiller or a decoder on its toolbar, a KV
+// dragged and dropped, never clicked: an engine on the canvas is a draft
+// where it lands, on a station called by it; a memory pool on an engine is
+// declared there; an arrow or a KV transfer on a station starts there, and
+// the station clicked next is its other end. An engine clicked is made
+// aggregated, a prefiller or a decoder on its toolbar, a KV
 // transfer clicked a pull or a push. The run plays over it (replay.ts): a
 // canvas above the nodes and edges, under the panels, which the page's
 // player draws on.
@@ -42,7 +42,7 @@ import {
   useStore,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { createContext, type DragEvent, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, type DragEvent, type MouseEvent, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Draft } from "../edit";
 import type { View } from "../player";
@@ -69,9 +69,9 @@ export interface EditHost {
   copy(from: string, to: string, mode: "pull" | "push"): void;
   /** The KV copy between two stations made a pull or a push. */
   mode(from: string, to: string, mode: "pull" | "push"): void;
-  /** The role an engine or a draft engine plays, a prefiller's or a decoder's, if either. */
+  /** The role an engine or a draft engine plays, aggregated, a prefiller's or a decoder's, if any. */
   role(id: string): Role | null;
-  /** An engine or a draft engine made a prefiller or a decoder. */
+  /** An engine or a draft engine made aggregated, a prefiller or a decoder. */
   setRole(id: string, role: Role): void;
   /** A part from the sidebar made a draft: the draft, and its node's id. */
   add(part: Part): { draft: Draft; id: string };
@@ -94,9 +94,9 @@ export interface ReplaySurface {
   toAnchor(clientX: number, clientY: number): Point;
 }
 
-/** A node the sidebar makes: an engine, a delay, or a pool of `count`
- * engines. An engine takes its role (prefill or decode) clicked. */
-export type Part = { kind: "engine" | "delay" } | { kind: "pool"; count: number };
+/** A node the sidebar makes: an engine or a delay. An engine starts
+ * aggregated and takes another role (prefill or decode) clicked. */
+export type Part = { kind: "engine" | "delay" };
 
 /** What a part in the sidebar does where it is dropped: a node (`Part`); a
  * memory pool, on an engine; an arrow (a call) or a KV transfer (pulled,
@@ -200,14 +200,21 @@ function SerqNode({ id, data, parentId, selected }: NodeProps<SerqNodeT>) {
   );
 }
 
-/** An engine's role, a prefiller's or a decoder's: the other one clicked rewrites it. */
+/** The roles an engine takes, serQ's, each its button's words and title. */
+const ROLES: { role: Role; label: string; title: string }[] = [
+  { role: "agg", label: "Agg", title: "Aggregated: prefills and decodes on its own engine" },
+  { role: "prefill", label: "Prefill", title: "A prefiller: computes the prompt and leases the KV for a reader" },
+  { role: "decode", label: "Decode", title: "A decoder: decodes with the KV a prefiller leased, copied over NIXL" },
+];
+
+/** An engine's role, aggregated, a prefiller's or a decoder's: another one clicked rewrites it. */
 function RoleSwitch({ id, role }: { id: string; role: Role }) {
   const host = useContext(Host)!;
   return (
     <span className="seg" role="group" aria-label="Role">
-      {(["prefill", "decode"] as const).map((r) => (
-        <button key={r} className={`k-${r}`} aria-pressed={role === r} onClick={() => host.setRole(id, r)} title={r === "prefill" ? "A prefiller: computes the prompt and leases the KV for a reader" : "A decoder: prefills locally, or reads the KV a prefiller leased, and decodes"}>
-          {r === "prefill" ? "Prefill" : "Decode"}
+      {ROLES.map((r) => (
+        <button key={r.role} className={`k-${r.role}`} aria-pressed={role === r.role} onClick={() => host.setRole(id, r.role)} title={r.title}>
+          {r.label}
         </button>
       ))}
     </span>
@@ -225,24 +232,16 @@ function CodeButton({ id }: { id: string }) {
 }
 
 /** The sidebar of parts, by what they are: each dragged and dropped onto
- * the canvas (it does nothing clicked). A pool of engines' size is set here. */
+ * the canvas (it does nothing clicked). */
 function Parts() {
-  const [count, setCount] = useState(2);
-  const n = Math.min(64, Math.max(1, Math.round(count) || 1));
-  type Item = { key: string; label: string; hint: string; title: string; tool: Tool; note?: string };
-  const groups: { title: string; items: Item[]; extra?: ReactNode }[] = [
+  type Item = { key: string; label: string; hint: string; title: string; tool: Tool };
+  const groups: { title: string; items: Item[] }[] = [
     {
       title: "Engines",
       items: [
-        { key: "engine", label: "Engine", hint: "canvas or a station", title: "An engine: a queue with its device, engine and pools; click it to make it a prefiller or a decoder", tool: { kind: "node", part: { kind: "engine" } } },
-        { key: "pool", label: "Engine pool", note: `×${n}`, hint: "canvas or a station", title: `A pool of ${n} engines, a call choosing one (llm-d's InferencePool); click it to make them prefillers or decoders`, tool: { kind: "node", part: { kind: "pool", count: n } } },
+        { key: "engine", label: "Engine", hint: "canvas or a station", title: "An engine: a queue with its device, engine and pools, aggregated (it prefills and decodes); click it to make it a prefiller or a decoder", tool: { kind: "node", part: { kind: "engine" } } },
         { key: "delay", label: "Delay", hint: "canvas or a station", title: "A delay stage: a wait outside the engines", tool: { kind: "node", part: { kind: "delay" } } },
       ],
-      extra: (
-        <label className="fparts-n">
-          engines in a pool <input type="number" min={1} max={64} value={count} onChange={(e) => setCount(Number(e.target.value))} aria-label="Engines in a pool" />
-        </label>
-      ),
     },
     {
       title: "Memory pools",
@@ -279,14 +278,10 @@ function Parts() {
               }}
             >
               <i aria-hidden="true" />
-              <span>
-                {p.label}
-                {p.note && <small className="fpart-note">{p.note}</small>}
-              </span>
+              <span>{p.label}</span>
               <small>{p.hint}</small>
             </div>
           ))}
-          {g.extra}
         </section>
       ))}
     </aside>
