@@ -57,6 +57,11 @@
       <div class="body relative flex min-h-0">
         <!-- the program: serQ's text, the Code view -->
         <aside id="code-pane" class="code-pane editor flex min-h-0 flex-col border-r border-line bg-panel" aria-label="Program">
+          <!-- a pair's two files: the deployment, which Flow edits, and its workload -->
+          <div id="doc-switch" class="doc-switch flex items-center gap-2 border-b border-line px-3 py-1.5" role="group" aria-label="File" hidden>
+            <button data-doc="deployment" aria-pressed="true"></button>
+            <button data-doc="workload" aria-pressed="false"></button>
+          </div>
           <div id="source" class="source min-h-0 flex-1"></div>
           <div class="code-foot flex items-center gap-2 border-t border-line px-3 py-1.5 text-[11px] text-dim">
             <kbd>Ctrl</kbd><kbd>Space</kbd><span>completes</span>
@@ -72,6 +77,8 @@
             <div id="prog-head" class="prog-head">
               <div class="prog-pick flex items-center gap-2">
                 <select id="program" class="min-w-0 flex-1 font-mono text-[13px]" aria-label="Example program"></select>
+                <!-- a deployment runs under a workload of its own file, which the tool pairs with it (serQ --workload) -->
+                <select id="workload" class="min-w-0 flex-1 font-mono text-[13px]" aria-label="Workload" title="The workload the deployment runs under: a file of its own, paired by serQ" hidden></select>
                 <button id="draw" class="btn-primary" title="The figure follows the text as you type; this runs it again">
                   <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4.5h-4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   Run again

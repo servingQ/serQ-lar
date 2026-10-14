@@ -350,19 +350,24 @@ parameters; the workload reads only its own, what it sends as it is,
 same (serQ `docs/design/request-interface.md`). This is what lets U18 pair
 a workload with a deployment by the signature alone.
 
-## U18. Workload and deployment in separate files
+## U18. Workload and deployment in separate files — landed
 
-Builds on U17: with the interface, a workload and a deployment pair by the
-server's signature alone. The page then shows them as two texts (side by
-side, tabs at phone width), with a picker each: change one, keep the
-other, run again. The figure's arrival leads to the workload text, a
-station to the deployment's; figure edits always write the deployment.
-The arrow into the first station can carry the request's fields. serQ
-has to compile a set of sources (wasm has no file system) and say which
-file each diagnostic and outline range is in; and to say, from the
-signature, whether a pair fits, so the picker can mark the ones that do
-not without the page reading the programs. A single-file program keeps
-working.
+serQ [#638](https://github.com/servingQ/serQ/issues/638),
+[#639](https://github.com/servingQ/serQ/pull/639), in v0.1.6-alpha.8: a
+deployment file and a workload file (no `fn main()`), paired by the tool
+(`serq run D --workload W`, `serq::compile_paired`, `outline_paired`).
+They meet only at the server's signature; each file's names are its own,
+and serQ's messages name their file (`workload: 1:5: …`).
+`crates/serq-wasm` takes an optional workload text on `ir`, `draw`,
+`outline` and `run`. The page lists serQ's `examples/paired/` deployments
+beside the programs; a deployment gets a second picker, its workload, and
+the Code tab a switch between the two files (`Editor.show`, each its own
+undo history). Flow edits the deployment; a diagnostic opens the file it
+names. A deployment starts under `multi_turn` (`DEFAULT_WORKLOAD` in
+`main.ts`), a stopgap until serQ says each deployment's default workload
+(`examples/pairs.json`, the next serQ step, where every example is a pair).
+Not yet: marking a workload that does not fit a deployment's signature
+before it is run (serQ's error says so after).
 
 ## U19. The figure's words, on what they label
 

@@ -12,4 +12,9 @@ for f in \
   engines/sglang.sq single-turn/mg1.sq single-turn/vllm_single_turn.sq; do
   cp "$serq/examples/$f" "$out/$(basename "$f")"
 done
-echo "copied $(ls "$out" | wc -l) programs from $serq"
+# deployments and the workloads the tool pairs with them (serQ --workload)
+for kind in deployments workloads; do
+  mkdir -p "$out/$kind"
+  cp "$serq/examples/paired/$kind/"*.sq "$out/$kind/"
+done
+echo "copied $(ls "$out"/*.sq | wc -l) programs, $(ls "$out"/deployments | wc -l) deployments and $(ls "$out"/workloads | wc -l) workloads from $serq"
