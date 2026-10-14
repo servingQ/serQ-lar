@@ -1,7 +1,8 @@
 // Where things are in the deployment view's SVG, by what the program calls
 // them: serQ names each station's stage (`<g data-stage="P">`), each queue
 // glyph's and drum's pool (`data-pool`), the arrival and exit arrows
-// (`data-role`). An array's members share one station. The figure is laid
+// (`data-role`). An array's members share one station, except in a stacked
+// instance, which serQ draws once per member (`P[1]`). The figure is laid
 // out off the page: the replay plays on the Flow view's places
 // (flow/replay.ts), and takes from here only what that view does not draw.
 

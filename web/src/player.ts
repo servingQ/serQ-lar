@@ -124,22 +124,28 @@ export class Player {
   private moves: Set<number>;
   /** Per stage name: the most tokens one of its iterations scheduled, the budget bar's scale. */
   private peak = new Map<string, number>();
+  /** What the figure calls each stage and pool of the log: a stacked
+   * instance's member by its own name (`P[1]`), any other array's members
+   * by the one station they share (`P`). */
   private stageName: string[];
   private poolName: string[];
+  /** Per pool (by index): the station whose entrance its queue is at, if the IR says. */
+  private poolStage: Map<number, string>;
 
   constructor(
     private log: Log,
     private at: Anchors,
-    /** Per pool (by index): the stage whose entrance its queue is at, if the IR says. */
-    private poolStage: Map<number, string>,
+    /** Per pool (by index): the stage (by index) whose entrance its queue is at, if the IR says. */
+    poolStages: Map<number, number>,
     private canvas: HTMLCanvasElement,
     public horizon: number,
     /** The part of the deployment in view: the canvas draws as React Flow shows it. */
     private camera: View,
   ) {
     this.ctx = canvas.getContext("2d")!;
-    this.stageName = log.stages.map((s) => s.name);
-    this.poolName = log.pools.map((p) => p.name);
+    this.stageName = log.stages.map((s) => (at.stations.has(label(s)) ? label(s) : s.name));
+    this.poolName = log.pools.map((p) => (at.pools.has(label(p)) ? label(p) : p.name));
+    this.poolStage = new Map([...poolStages].map(([q, s]) => [q, this.stageName[s]]));
     this.until = runEnds(log.events, horizon);
     this.moves = this.waitMoves();
     for (const e of log.events) {

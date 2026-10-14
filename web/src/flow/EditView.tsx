@@ -36,6 +36,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
+  useNodesInitialized,
   useNodesState,
   useReactFlow,
   useStore,
@@ -46,7 +47,8 @@ import { createRoot } from "react-dom/client";
 import type { Draft } from "../edit";
 import type { View } from "../player";
 import type { Role } from "../snippets";
-import { type Graph, type GraphInstance, type GraphNode, SINK, SOURCE } from "./graph";
+import { family } from "../events";
+import { type Graph, type GraphInstance, type GraphNode, SINK, SOURCE, nicOf } from "./graph";
 import { flowTransform, type Placed, toAnchor } from "./replay";
 import { avoid, labelAt, type Point, pathOf, route } from "./route";
 
@@ -363,6 +365,8 @@ const H = 44;
 const PAD = 14;
 const HEAD = 20;
 const FOOT = 30;
+/** Between two panels one over the other. */
+const GAP_Y = 24;
 
 type Layout = Record<string, { x: number; y: number }>;
 function load(key: string): Layout {
@@ -416,19 +420,30 @@ function edgesOf(g: Graph): Edge[] {
 const sizeOf = (n: FlowNode) => ({ w: n.measured?.width ?? W, h: n.measured?.height ?? H });
 
 /** Each instance fitted around its members as they stand (`abs`, on the
- * canvas), and each member placed in its instance. Instances come first:
- * React Flow wants a parent before its children. */
+ * canvas), and each member placed in its instance. A panel that overlaps
+ * one above it (a stacked instance's members, `P[1]` under `P[0]`, once
+ * their cards are measured) goes down clear of it, its members with it.
+ * Instances come first: React Flow wants a parent before its children. */
 function fit(nodes: FlowNode[], abs: (n: SerqNodeT) => { x: number; y: number }): FlowNode[] {
   const groups = nodes.filter((n): n is InstanceNodeT => n.type === "instance");
   const at = new Map<string, { x: number; y: number }>();
   const out: FlowNode[] = [];
-  for (const g of groups) {
+  const rects = groups.map((g) => {
     const members = nodes.filter((n): n is SerqNodeT => n.type === "serq" && g.data.instance.members.includes(n.id));
     const boxes = members.map((m) => ({ ...abs(m), ...sizeOf(m) }));
     const x = Math.min(...boxes.map((b) => b.x)) - PAD;
     const y = Math.min(...boxes.map((b) => b.y)) - PAD - HEAD;
     const width = Math.max(...boxes.map((b) => b.x + b.w)) + PAD - x;
     const height = Math.max(...boxes.map((b) => b.y + b.h)) + FOOT - y;
+    return { g, x, y, was: y, width, height };
+  });
+  const placed: typeof rects = [];
+  for (const r of [...rects].sort((a, b) => a.y - b.y || a.x - b.x)) {
+    for (const o of placed)
+      if (r.x < o.x + o.width && o.x < r.x + r.width && r.y < o.y + o.height + GAP_Y && o.y < r.y + r.height) r.y = o.y + o.height + GAP_Y;
+    placed.push(r);
+  }
+  for (const { g, x, y, width, height } of rects) {
     at.set(g.id, { x, y });
     out.push({ ...g, position: { x, y }, width, height, style: { width, height } });
   }
@@ -437,7 +452,10 @@ function fit(nodes: FlowNode[], abs: (n: SerqNodeT) => { x: number; y: number })
     const g = groups.find((g) => g.data.instance.members.includes(n.id));
     const p = abs(n);
     const o = g ? at.get(g.id)! : null;
-    out.push({ ...n, parentId: g?.id, expandParent: !!g, position: o ? { x: p.x - o.x, y: p.y - o.y } : p });
+    // a member keeps its place in its panel, wherever the panel went
+    const r = g ? rects.find((x) => x.g === g)! : null;
+    const dy = r ? r.y - r.was : 0;
+    out.push({ ...n, parentId: g?.id, expandParent: !!g, position: o ? { x: p.x - o.x, y: p.y + dy - o.y } : p });
   }
   return out;
 }
@@ -515,8 +533,10 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
         id: n.id,
         type: "serq",
         position: at(n) ?? { x: n.x - W / 2, y: n.y - H / 2 },
-        data: { node: n, nic: g.nodes.some((x) => x.id === `${n.id}.nic`) },
+        data: { node: n, nic: g.nodes.some((x) => x.id === nicOf(n.id)) },
         deletable: n.kind !== "source" && n.kind !== "sink" && n.kind !== "decision",
+        // its size as last measured, so that the panels are fitted to it at once
+        measured: flow.getNode(n.id)?.measured,
       }));
       const groups: InstanceNodeT[] = g.instances.map((i) => ({
         id: i.id,
@@ -530,8 +550,14 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
       if (kept) save(host.layoutKey(), layout);
       return fit([...groups, ...serq], (n) => n.position);
     },
-    [host],
+    [host, flow],
   );
+
+  // the cards measured at last: the panels fitted to them, a stacked instance's kept apart
+  const measured = useNodesInitialized();
+  useEffect(() => {
+    if (measured) setNodes((now) => fit(now, (n) => absolute(now, n)));
+  }, [measured, setNodes]);
 
   // a new graph from serQ: a node the viewer dragged stays there, every other goes where serQ's layout puts it now
   useEffect(() => {
@@ -607,7 +633,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
       const taken = new Set((n.pools ?? []).map((q) => q.name));
       let name = stem;
       for (let i = 2; taken.has(name); i++) name = `${stem}${i}`;
-      host.pool(on.id.replace(/\.nic$/, ""), name, pool, pool === "blocks" ? "160000" : "16");
+      host.pool(family(on.id).replace(/\.nic$/, ""), name, pool, pool === "blocks" ? "160000" : "16");
     },
     [host],
   );
@@ -721,7 +747,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
           onConnect={(c: Connection) => c.source && c.target && host.connect(c.source, c.target)}
           isValidConnection={(c) => c.source !== c.target && c.target !== SOURCE && c.source !== SINK}
           onNodeClick={(_, n) => {
-            const id = n.type === "instance" ? (n.data.instance.members.find((m) => !m.endsWith(".nic")) ?? null) : n.id;
+            const id = n.type === "instance" ? (n.data.instance.members.find((m) => !family(m).endsWith(".nic")) ?? null) : n.id;
             if (wire) return id && finish(id);
             host.select(id);
           }}

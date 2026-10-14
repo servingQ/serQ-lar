@@ -48,3 +48,9 @@ export function whoOf(r: number[]): string {
 export function label(n: Named): string {
   return n.index === null ? n.name : `${n.name}[${n.index}]`;
 }
+
+/** The array a member's name is of: `P.nic` for `P.nic[1]`. serQ's figure
+ * names a stacked instance's stations and pools by their member (`label`). */
+export function family(name: string): string {
+  return name.replace(/\[\d+\]$/, "");
+}

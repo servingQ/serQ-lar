@@ -8,7 +8,7 @@ import { Editor } from "./editor";
 import { graphOf, SINK, SOURCE, draftId, type Graph } from "./flow/graph";
 import type { EditHost, ReplaySurface } from "./flow/EditView";
 import { flowAnchors } from "./flow/replay";
-import type { Log } from "./events";
+import { family, type Log } from "./events";
 import { kinds, outline as readOutline, type Outline } from "./outline";
 import { showCrossing } from "./crossing";
 import { Player } from "./player";
@@ -213,16 +213,16 @@ function startReplay() {
   tick(0);
 }
 
-/** Per pool (by index), the stage whose entrance its queue is at: the
- * stage it admits for (`admit_via`), or the engine whose memory it is. */
-function poolStages(ir: { pools: { admit_via?: number | null }[]; stages: { name: string; kind: unknown }[] }): Map<number, string> {
-  const out = new Map<number, string>();
+/** Per pool (by index), the stage (by index) whose entrance its queue is
+ * at: the stage it admits for (`admit_via`), or the engine whose memory it is. */
+function poolStages(ir: { pools: { admit_via?: number | null }[]; stages: { kind: unknown }[] }): Map<number, number> {
+  const out = new Map<number, number>();
   ir.pools.forEach((q, i) => {
-    if (q.admit_via !== undefined && q.admit_via !== null) out.set(i, ir.stages[q.admit_via].name);
+    if (q.admit_via !== undefined && q.admit_via !== null) out.set(i, q.admit_via);
   });
-  ir.stages.forEach((s) => {
+  ir.stages.forEach((s, i) => {
     const step = (s.kind as { Step?: { memory?: number | null } }).Step;
-    if (step && step.memory !== undefined && step.memory !== null && !out.has(step.memory)) out.set(step.memory, s.name);
+    if (step && step.memory !== undefined && step.memory !== null && !out.has(step.memory)) out.set(step.memory, i);
   });
   return out;
 }
@@ -376,7 +376,9 @@ function endOf(id: string): { from?: From; to?: To; nic?: Draft } {
   if (id === SOURCE || id.startsWith("#")) return { from: { kind: "arrival" } };
   const d = compose.draftList.find((_, i) => draftId(i) === id);
   if (d) return d.kind === "nic" ? { nic: d } : { to: { kind: "draft", draft: d } };
-  return { from: { kind: "station", stage: id }, to: { kind: "station", stage: id } };
+  // a member of a stacked instance (`P[1]`) is written as its array
+  const stage = family(id);
+  return { from: { kind: "station", stage }, to: { kind: "station", stage } };
 }
 
 const editHost: EditHost = {
@@ -390,7 +392,7 @@ const editHost: EditHost = {
     compose.link(a.from ?? null, b.to, a.nic);
   },
   select(id) {
-    const station = id && !id.startsWith("#") && id !== SOURCE && id !== SINK && !id.startsWith("draft:") ? id : null;
+    const station = id && !id.startsWith("#") && id !== SOURCE && id !== SINK && !id.startsWith("draft:") ? family(id) : null;
     // its part of the run's report, under the view
     selected = station ? { kind: "stage", name: station } : null;
     showReport();
@@ -404,23 +406,23 @@ const editHost: EditHost = {
     for (const id of ids) {
       const d = compose.draftList.find((_, i) => draftId(i) === id);
       if (d) compose.discard(d);
-      else compose.removeStation(id);
+      else compose.removeStation(family(id));
     }
   },
   layoutKey: () => `serq-lar:layout:${select.value}`,
-  instance: (id) => compose.makeInstance(id),
-  pool: (id, name, kind, cap) => compose.declarePool(id, name, kind, cap),
-  copy: (from, to, mode) => compose.copyKv(from, to, mode),
-  mode: (from, to, mode) => compose.setMode(from, to, mode),
-  role: (id) => compose.roleOf(compose.draftList.find((_, i) => draftId(i) === id) ?? id),
-  setRole: (id, role) => compose.setRole(compose.draftList.find((_, i) => draftId(i) === id) ?? id, role),
+  instance: (id) => compose.makeInstance(family(id)),
+  pool: (id, name, kind, cap) => compose.declarePool(family(id), name, kind, cap),
+  copy: (from, to, mode) => compose.copyKv(family(from), family(to), mode),
+  mode: (from, to, mode) => compose.setMode(family(from), family(to), mode),
+  role: (id) => compose.roleOf(compose.draftList.find((_, i) => draftId(i) === id) ?? family(id)),
+  setRole: (id, role) => compose.setRole(compose.draftList.find((_, i) => draftId(i) === id) ?? family(id), role),
   say: (m, bad) => sayIt(m, bad),
   add(part) {
     const d = part.kind === "pool" ? compose.addPool(part.count) : compose.add(part.kind);
     return { draft: d, id: draftId(compose.draftList.indexOf(d)) };
   },
   code(id) {
-    const at = currentOutline && codeOf(currentOutline, id);
+    const at = currentOutline && codeOf(currentOutline, family(id));
     if (!at) return void sayIt(`${id} is not written as such in the text: serQ's outline does not place it.`, true);
     setTab("code");
     editor.view.dispatch({ selection: { anchor: at[0], head: at[1] }, effects: EditorView.scrollIntoView(at[0], { y: "center" }) });

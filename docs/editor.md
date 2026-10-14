@@ -74,7 +74,11 @@ See [upstream.md](upstream.md), U10.
    instance serQ draws as a panel (`prefill instance P[i]`: the engine,
    its NIC) is a box here, with serQ's words over it, that holds its
    members: dragged, it moves them; a member dragged stays inside it, and
-   it fits itself around them. The arrows are routed by libavoid
+   it fits itself around them. serQ draws such an instance once per
+   member (`choose i in NP`: `NP` panels, `P[0]` over `P[1]`, the copy from
+   each prefiller to each decoder), and so does this view: an edit on a
+   member is written to its array (`P`), and a panel kept clear of the
+   one above it once the cards are measured. The arrows are routed by libavoid
    (`flow/route.ts`): orthogonal, around every node and clear of each
    panel's words, and arrows that would share a stretch are nudged apart,
    so no arrow runs through a node or on top of another, after a drag as
