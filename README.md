@@ -50,25 +50,26 @@ replay goes with it.
 
 The Flow tab edits the text, too. It shows the deployment as nodes to
 drag and wire (React Flow), with a sidebar of parts beside them, each
-dragged and dropped (a click does nothing): Engines (Prefill, Decode,
-Delay) and Pools of N engines (`queue D[N]`, a call choosing one), onto
-the canvas as drafts, or onto a station, which then calls them; memory
-Pools (KV blocks, request slots) onto an engine; an Arrow (a call) or a
-KV transfer (pull, push) onto a station, then a click on its other end.
+dragged and dropped (a click does nothing): Engines (an engine, a pool
+of N engines, `queue D[N]` with a call choosing one, a delay) onto the
+canvas as drafts, or onto a station, which then calls them; Memory
+pools (KV blocks, request slots) onto an engine; an Arrow (a call) or a
+KV transfer onto a station, then a click on its other end. Nothing sits
+above the canvas: an engine clicked is made a prefiller or a decoder, a
+KV transfer clicked a pull or a push.
 An arrow from the arrival or a station to a draft writes the queue and
 its call into the program. Its nodes are serQ's stations
 and arrows, where serQ placed them, each with an input on its left and an
 output on its right; an instance serQ draws as a panel (an engine with its
 NIC) is a box holding its members, dragged as one; each station lists its
 memory pools (a declared pool no hold takes yet, dashed); a chosen engine
-has Make instance (its queue a family its calls choose a member of),
-+ NIC and + Memory pool on a toolbar, and any station chosen has Code,
+has Prefill ⇄ Decode and Make instance (its queue a family its calls
+choose a member of) on a toolbar, a chosen KV copy pull ⇄ push (serQ
+writes which on the copy), and any station chosen has Code,
 which opens the Code tab where it is written; the arrows are routed around the
 nodes (libavoid), none on top of another; an arrow drawn from one handle to another is written
 into the program, a node dragged stays where it was put (in this browser
-only), and Delete removes a station. Click a station for
-its instances, a NIC, a pool, the KV copy's pull or push (serQ writes
-which on the copy), a duplicate, or its removal. Every edit is text in
+only), and Delete removes a station. Every edit is text in
 the program, one step to undo (Ctrl+Z, in Flow as in the text), and serQ
 says whether it is a program ([docs/editor.md](docs/editor.md)).
 
@@ -92,7 +93,7 @@ web/                Vite + TypeScript, no framework
   src/outline.ts      serQ's outline of the text (where things are written)
   src/edit.ts         an edit from the figure as text, where the outline says
   src/snippets.ts     the text the palette writes
-  src/compose.ts      the palette, the drafts, the arrows, the inspector
+  src/compose.ts      the palette, the drafts, the arrows, roles and modes
   src/flow/graph.ts   serQ's figure as a graph: its nodes, arrows, layout and words
   src/flow/EditView.tsx  the Edit view in React Flow, loaded when opened
   src/flow/route.ts   the Edit view's arrows, routed around the nodes by libavoid

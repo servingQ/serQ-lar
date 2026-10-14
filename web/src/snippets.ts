@@ -8,49 +8,58 @@
  * and pools, a call choosing one. */
 const head = (name: string, count?: number) => (count === undefined ? name : `${name}[${count}]`);
 
-/** A queue that prefills: device, engine, its request slots and KV, and the
- * entry that computes the prompt and leases the KV for a reader. */
-export function prefill(name: string, count?: number): string {
-  return `queue ${head(name, count)} : prefill {
+/** An engine's role: a prefiller computes the prompt and leases the KV for
+ * a reader; a decoder prefills locally and decodes the request's hidden
+ * `output` tokens (the server's hidden parameter, `o` where it has none). */
+export type Role = "prefill" | "decode";
+
+/** A queue that prefills or decodes: device, engine, its request slots and KV, and its role's entry. */
+export function engine(role: Role, name: string, count?: number, output = "o"): string {
+  return `queue ${head(name, count)} : ${role} {
   device gpu { compute (t) = t * 2e-5; hbm (k) = 2e-4 + 2e-9 * k; kv cap 160000; }
   engine on gpu {
-    reqs cap 16;
+    reqs cap ${role === "prefill" ? 16 : 64};
     tokens cap 8192;
-    scheduler { advance running; admit waiting while (running.preempted == 0); }
+${indent(scheduler(role), "    ")}
     worker { forward (max(hbm(batch.kv_decode + batch.kv_prefill), compute(batch.tokens))); }
   }
   pool reqs on ${name} { queue fifo; }
   pool kv on gpu { block 16; evict lru; preempt lifo; }
-  prefill (prompt) {
-    hold reqs (cost(reqs, 1)), kv (cost(kv, prompt)) {
-      run ${name} prefill (cost(${name}, prompt)) growing kv;
-    } lease kv (inf);
-  }
+${indent(entry(role, name, output), "  ")}
 }`;
 }
 
-/** A queue that decodes: device, engine, its request slots and KV, and the
- * entry that prefills locally and decodes the request's hidden \`output\`
- * tokens (the server's hidden parameter, \`o\` where it has none). */
-export function decode(name: string, count?: number, output = "o"): string {
-  return `queue ${head(name, count)} : decode {
-  device gpu { compute (t) = t * 2e-5; hbm (k) = 2e-4 + 2e-9 * k; kv cap 160000; }
-  engine on gpu {
-    reqs cap 64;
-    tokens cap 8192;
-    scheduler {
-      advance running;
-      admit waiting while (running.preempted == 0) taking reqs (1), kv (request.known) reserve (request.known);
-    }
-    worker { forward (max(hbm(batch.kv_decode + batch.kv_prefill), compute(batch.tokens))); }
-  }
-  pool reqs on ${name} { queue fifo; }
-  pool kv on gpu { block 16; evict lru; preempt lifo; }
-  decode (prompt) {
-    ${name} (prompt, ${output});
-  }
+export const prefill = (name: string, count?: number) => engine("prefill", name, count);
+export const decode = (name: string, count?: number, output = "o") => engine("decode", name, count, output);
+
+/** A role's scheduler: a decoder takes its slots and KV as it admits; a prefiller's entry holds them. */
+export function scheduler(role: Role): string {
+  return role === "prefill"
+    ? "scheduler { advance running; admit waiting while (running.preempted == 0); }"
+    : `scheduler {
+  advance running;
+  admit waiting while (running.preempted == 0) taking reqs (1), kv (request.known) reserve (request.known);
 }`;
 }
+
+/** A role's entry in queue `name`; a decoder's generates `output` tokens. */
+export function entry(role: Role, name: string, output = "o"): string {
+  return role === "prefill"
+    ? `prefill (prompt) {
+  hold reqs (cost(reqs, 1)), kv (cost(kv, prompt)) {
+    run ${name} prefill (cost(${name}, prompt)) growing kv;
+  } lease kv (inf);
+}`
+    : `decode (prompt) {
+  ${name} (prompt, ${output});
+}`;
+}
+
+const indent = (text: string, by: string) =>
+  text
+    .split("\n")
+    .map((l) => by + l)
+    .join("\n");
 
 /** A delay stage: a wait outside any engine (a hop, an API server). */
 export function delay(name: string): string {

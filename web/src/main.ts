@@ -125,7 +125,6 @@ async function redraw(runNow = false) {
   currentOutline = outlined.ok ? readOutline(outlined.value, src) : null;
   if (currentOutline) editor.outlined = kinds(currentOutline);
   showCrossing(currentOutline);
-  compose.refresh();
   if (!drawn.ok) return fail(drawn.error);
   if (!irJson.ok) return fail(irJson.error);
   diag.hidden = true;
@@ -353,15 +352,12 @@ function sayIt(m: string, bad?: boolean) {
   clearTimeout(sayTimer);
   sayTimer = window.setTimeout(() => (say.textContent = ""), 9000);
 }
-const compose = new Compose(
-  {
-    text: () => editor.text,
-    outline: () => currentOutline,
-    apply: (edits) => editor.apply(edits),
-    say: (m, bad) => sayIt(m, bad),
-  },
-  $<HTMLDivElement>("inspector"),
-);
+const compose = new Compose({
+  text: () => editor.text,
+  outline: () => currentOutline,
+  apply: (edits) => editor.apply(edits),
+  say: (m, bad) => sayIt(m, bad),
+});
 // ------------------------------------------------------------ the views ----
 
 /** Flow: the deployment, serQ's graph with its words, the run replayed over
@@ -395,8 +391,7 @@ const editHost: EditHost = {
   },
   select(id) {
     const station = id && !id.startsWith("#") && id !== SOURCE && id !== SINK && !id.startsWith("draft:") ? id : null;
-    compose.choose(station);
-    // and its part of the run's report, under the view
+    // its part of the run's report, under the view
     selected = station ? { kind: "stage", name: station } : null;
     showReport();
   },
@@ -414,12 +409,14 @@ const editHost: EditHost = {
   },
   layoutKey: () => `serq-lar:layout:${select.value}`,
   instance: (id) => compose.makeInstance(id),
-  nic: (id) => compose.nicDraft(id),
   pool: (id, name, kind, cap) => compose.declarePool(id, name, kind, cap),
   copy: (from, to, mode) => compose.copyKv(from, to, mode),
+  mode: (from, to, mode) => compose.setMode(from, to, mode),
+  role: (id) => compose.roleOf(compose.draftList.find((_, i) => draftId(i) === id) ?? id),
+  setRole: (id, role) => compose.setRole(compose.draftList.find((_, i) => draftId(i) === id) ?? id, role),
   say: (m, bad) => sayIt(m, bad),
   add(part) {
-    const d = part.kind === "pool" ? compose.addPool(part.role, part.count) : compose.add(part.kind);
+    const d = part.kind === "pool" ? compose.addPool(part.count) : compose.add(part.kind);
     return { draft: d, id: draftId(compose.draftList.indexOf(d)) };
   },
   code(id) {
@@ -440,7 +437,7 @@ function codeOf(ol: Outline, id: string): [number, number] | null {
 }
 
 /** The Flow view, loaded the first time it is shown: React and React Flow are its alone. */
-let editView: Promise<{ show(g: Graph): void; surface: Promise<ReplaySurface> }> | null = null;
+let editView: Promise<{ show(g: Graph): void; rename(from: string, to: string): void; surface: Promise<ReplaySurface> }> | null = null;
 /** serQ's figure as laid out off the page, for what the Flow view does not
  * draw; the graph the Flow view shows; and what the replay draws over it with. */
 let figureAt: Anchors | null = null;
@@ -479,6 +476,8 @@ function showGraph() {
   editView.then((v) => v.show(g));
 }
 compose.onDrafts = showGraph;
+// before the graph it is shown in: the promise runs its callbacks in order
+compose.onRename = (from, to) => void editView?.then((v) => v.rename(from, to));
 
 /** Slide the selected tab's pill under it. */
 function inkTab() {

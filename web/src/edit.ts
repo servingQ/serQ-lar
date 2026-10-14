@@ -4,7 +4,7 @@
 // where serQ's outline says the thing is written. Whether the result is a
 // program is serQ's answer, when the page compiles it.
 
-import { promptParam, type Call, type Outline, type Queue, type Range, type Relation } from "./outline";
+import { outputParam, promptParam, type Call, type Outline, type Queue, type Range, type Relation } from "./outline";
 import * as snip from "./snippets";
 
 export interface Edit {
@@ -336,6 +336,54 @@ function legs(src: string, ol: Outline, source: string, fork: boolean): Edit[] {
   return out;
 }
 
+/** Make queue `q` an engine of `role`, a prefiller or a decoder: the role
+ * its head declares, its engine's scheduler, its entry (snippets.ts), and the
+ * verb its calls send by. A queue in a KV copy reads or leases by its
+ * entry's role, and an entry written by hand is the writer's: both are left
+ * to the text. */
+export function retype(src: string, ol: Outline, q: string, role: snip.Role): Edit[] | string {
+  const Q = ol.queues.find((x) => x.name === q);
+  if (!Q) return `\`${q}\` is no queue`;
+  const was = Q.roles.find((r): r is snip.Role => r === "prefill" || r === "decode");
+  if (!was) return `\`${q}\` is neither a prefiller nor a decoder: its role is written in the text`;
+  if (was === role) return [];
+  if (ol.relations.some((r) => r.source === q || r.reader === q)) return `${q} is in a KV copy, which its entry leases or reads by: change its role in the text`;
+  const entries = Q.members.filter((m) => m.kind === "entry");
+  if (entries.length !== 1 || entries[0].from || entries[0].name !== was) return `${q}'s entries are not one \`${was} (prompt)\`: change its role in the text`;
+  const edits: Edit[] = [];
+  const head = new RegExp(`^(\\s*queue\\s+${q}\\b[^:{]*:[^{]*?)\\b${was}\\b`).exec(src.slice(Q.range[0], Q.body[0]));
+  if (!head) return `\`queue ${q} : ${was}\` is not written where serQ's outline says`;
+  const at = Q.range[0] + head[1].length;
+  edits.push({ at: [at, at + was.length], text: role });
+  const engine = Q.members.find((m) => m.kind === "engine");
+  if (engine?.body) {
+    const sched = /\bscheduler\s*\{/.exec(src.slice(engine.body[0], engine.body[1]));
+    if (sched) {
+      const start = engine.body[0] + sched.index;
+      const end = closing(src, start + sched[0].length - 1);
+      if (end < 0) return `${q}'s scheduler has no closing brace`;
+      edits.push({ at: [start, end + 1], text: reindent(snip.scheduler(role), indentOf(src, start)).trimStart() });
+    }
+  }
+  const e = entries[0];
+  edits.push({ at: e.range, text: reindent(snip.entry(role, q, outputParam(ol) ?? undefined), indentOf(src, e.range[0])).trimStart() });
+  for (const c of callsOf(ol, q)) {
+    const m = new RegExp(`\\.\\s*${was}\\b`).exec(src.slice(c.range[0], c.range[1]));
+    if (m) edits.push({ at: [c.range[0] + m.index + m[0].length - was.length, c.range[0] + m.index + m[0].length], text: role });
+  }
+  return edits;
+}
+
+/** The brace closing the one at `open`, or -1. */
+function closing(src: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}" && --depth === 0) return i;
+  }
+  return -1;
+}
+
 /** A pool in queue `q`. */
 export function addPool(src: string, ol: Outline, q: string, text: string): Edit[] | string {
   const Q = ol.queues.find((x) => x.name === q);
@@ -406,7 +454,7 @@ export function instance(src: string, ol: Outline, q: string): Edit[] | string {
   const Q = ol.queues.find((x) => x.name === q);
   if (!Q) return `\`${q}\` is no queue: an instance is a queue's engine with its NIC`;
   if (!Q.members.some((m) => m.kind === "engine")) return `queue \`${q}\` has no engine to make an instance of`;
-  if (!Q.members.some((m) => m.kind === "nic")) return `\`${q}\` has no NIC to bundle: + NIC, then drag its card to the queue that reads the KV; then make the instance`;
+  if (!Q.members.some((m) => m.kind === "nic")) return `\`${q}\` has no NIC to bundle: draw a KV transfer from it first, then make the instance`;
   if (Q.family) return `\`${q}[${Q.family}]\` is a family with its NIC already: serQ draws its instance when its calls choose a member (\`choose k in … ; ${q}[k]…\`)`;
   const ends = [Q, ...ol.relations.flatMap((r) => (r.source === q ? [r.reader] : r.reader === q ? [r.source] : [])).map((n) => ol.queues.find((x) => x.name === n)!)].filter(
     (x, i, all) => x && !x.family && all.indexOf(x) === i,

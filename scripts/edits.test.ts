@@ -3,7 +3,7 @@
 // (esbuild bundles this file for Node, with serQ's wasm).
 
 import { readFileSync } from "node:fs";
-import { apply, connect, copy, declarePool, fresh, instance, remove, resize, toggle, type Draft, type Edit } from "../web/src/edit";
+import { apply, connect, copy, declarePool, fresh, instance, remove, resize, retype, toggle, type Draft, type Edit } from "../web/src/edit";
 import { outline as read, outputParam, type Outline } from "../web/src/outline";
 import * as snip from "../web/src/snippets";
 // @ts-ignore: wasm-bindgen's generated module
@@ -169,6 +169,31 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
     const o = ol(src);
     check("palette: the pull made a push", src, toggle(src, o, o.relations[0]), { stages: ["P.nic", "D.nic"], text: ["kvt.nixl_push (P, D"] });
   }
+}
+
+// an engine clicked takes the other role: its head, scheduler, entry and calls; one in a KV copy is left to the text
+{
+  let src = example("vllm");
+  const e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: queueDraft(src, "decode", "E") });
+  if (typeof e !== "string") src = apply(src, e);
+  const p = retype(src, ol(src), "E", "prefill");
+  check("roles: decoder E made a prefiller", src, p, { stages: ["E", "vllm"], text: ["queue E : prefill", "lease kv (inf)", "E.prefill ("] });
+  if (typeof p !== "string") {
+    const back = apply(src, p);
+    check("roles: and back to a decoder", back, retype(back, ol(back), "E", "decode"), { stages: ["E"], text: ["queue E : decode", "E (prompt, output);", "E.decode ("] });
+    const again = apply(back, retype(back, ol(back), "E", "decode") as Edit[]);
+    if (again !== src) {
+      failed++;
+      console.log("FAIL roles: there and back is not the text it started from");
+      console.log(diff(src, again));
+    } else console.log("ok   roles: there and back is the same text");
+  }
+  let f = example("vllm");
+  const pool = connect(f, ol(f), { kind: "arrival" }, { kind: "draft", draft: { kind: "queue", name: "E", role: "decode", family: "3", text: snip.decode("E", 3, outputParam(ol(f)) ?? undefined), relations: [] } });
+  if (typeof pool !== "string") f = apply(f, pool);
+  check("roles: a pool of 3 decoders made prefillers", f, retype(f, ol(f), "E", "prefill"), { stages: ["E"], text: ["queue E[3] : prefill", "].prefill ("] });
+  const l = example("llmd_nixl_pull");
+  check("roles: a prefiller in a KV copy", l, retype(l, ol(l), "P", "decode"), { refused: /KV copy/ });
 }
 
 // the palette's KV copy arrows, drawn from one station to another: a pull, and a push with the source's call a leg of its own

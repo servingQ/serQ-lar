@@ -49,21 +49,22 @@ See [upstream.md](upstream.md), U10.
    (`flow/replay.ts`).
 3. **Parts** (the Flow tab's sidebar), each dragged and dropped; a
    click does nothing.
-   - *Engines*: Prefill, Decode, Delay: a draft, dropped on the canvas,
-     where it stays until an arrow places it; dropped on a station, that
-     station calls it at once and serQ's layout places it.
-   - *Pools*: Prefill pool, Decode pool: a pool of N engines (llm-d's
-     InferencePool), a family `queue D[N]`, dropped as an engine is; its
-     call chooses a member (`choose k in N by (work(D[k]))`), and its
-     inspector steps N. KV blocks, Request slots: a memory pool, dropped
-     on an engine, declared there (7) by a name its queue has not got.
+   - *Engines*: Engine, Engine pool, Delay: a draft, dropped on the
+     canvas, where it stays until an arrow places it; dropped on a
+     station, that station calls it at once and serQ's layout places it.
+     An engine starts a decoder (a whole engine: it prefills locally) and
+     is made a prefiller or a decoder on its toolbar (6). An engine pool
+     is N engines (llm-d's InferencePool), a family `queue D[N]`; its
+     call chooses a member (`choose k in N by (work(D[k]))`); N is set
+     in the sidebar, and in the text after.
+   - *Memory pools*: KV blocks, Request slots: a memory pool, dropped on
+     an engine, declared there (7) by a name its queue has not got.
    - *Arrows*: Call, dropped on the arrival or a station: an arrow from
      there follows the pointer, and the station or draft clicked next is
      its end (5). Esc, or a click on the empty canvas, drops it.
-   - *KV transfer*: KV pull, KV push, dropped on the source's engine, the
-     reader clicked next: the copy (`copy` in `edit.ts`), with the NICs,
-     the connector and the relation; a push makes the source's call a
-     leg of its own (`fork { … }`), as the inspector's pull ⇄ push does.
+   - *KV transfer*: dropped on the source's engine, the reader clicked
+     next: the copy (`copy` in `edit.ts`), with the NICs, the connector
+     and the relation, a pull; the copy clicked is made a push (6).
 4. **The Edit view** (React Flow, the Flow tab). serQ's graph as nodes to
    drag and wire: the nodes and arrows are read off serQ's figure
    (`data-node`, `data-from`, `data-to`, `data-copy`), the kinds off the IR,
@@ -79,10 +80,9 @@ See [upstream.md](upstream.md), U10.
    so no arrow runs through a node or on top of another, after a drag as
    well. Each station lists its memory pools, from the IR: request slots
    (orange) and KV blocks (blue), with their capacity; a pool no hold
-   takes yet, which serQ's figure does not draw, is dashed. An engine or a
-   NIC chosen has a toolbar: Make instance, + NIC, + Memory pool (7), and
-   Code, which opens the Code tab on where it is written (a station or a
-   delay chosen has Code alone). A
+   takes yet, which serQ's figure does not draw, is dashed. A node chosen
+   has a toolbar (6); a station's has Code, which opens the Code tab on
+   where it is written. A
    connection between two handles is an arrow below; a node dragged keeps
    its place in this browser (a layout, not the program); Delete removes a
    station; "serQ's layout" puts every node back. serQ's words are on it
@@ -99,13 +99,19 @@ See [upstream.md](upstream.md), U10.
    member. From a NIC's draft to a queue: the KV copy (`kvt.nixl_pull`), with the NICs,
    the `use`s, the reader's `connector` and its entry and call `from` the
    source.
-6. **Inspector** (click a station or a copy in the Edit view). Instances −/+ (the family's
-   `let`), pull ⇄ push (a push dispatches the source's call with `fork`,
-   which serQ requires), + NIC, Make instance and + Memory pool (7),
-   Duplicate (a draft copy, with the relations it reads by), Remove (the
-   queue, its calls and its copies; serQ names whatever else still refers
-   to it).
-7. **Instances and pools** (the Edit view's toolbar, or the inspector).
+6. **Toolbars** (click a node or a copy in the Edit view; nothing above
+   the canvas). An engine, or a draft engine: Prefill ⇄ Decode. A draft
+   is written again under its role's name (`P`, `D`); a queue written
+   already has its head's role, its engine's scheduler, its entry and
+   its calls' verb rewritten (`retype` in `edit.ts`), unless it is in a
+   KV copy, which its entry leases or reads by, or its entry is not the
+   one `prefill (prompt)` or `decode (prompt)`: those are left to the
+   text. An engine in no instance: Make instance (7). A KV copy: pull ⇄
+   push (a push dispatches the source's call with `fork`, which serQ
+   requires). Delete removes a station (its queue, its calls and its
+   copies; serQ names whatever else still refers to it); an instance's
+   size, a NIC alone and a station's copy are written in the text.
+7. **Instances and pools** (the Edit view's toolbar, or the sidebar).
    An instance is not declared in serQ: it is the panel serQ draws around
    the engine, NIC and pools one `choose` variable indexes. Make instance
    writes that: the queue a family of one (`queue P[1]`), each call
@@ -113,8 +119,8 @@ See [upstream.md](upstream.md), U10.
    (…);`), a call reading the KV `from P` reading it `from P[k]`. serQ
    copies KV between two families or two queues, not one of each, so the
    queue at the copy's other end becomes an instance too, by a variable of
-   its own. A queue with no NIC is sent to + NIC first: serQ refuses a NIC
-   that carries no copy. + Memory pool declares a pool and the capacity
+   its own. A queue with no NIC is sent to draw a KV transfer first: serQ
+   refuses a NIC that carries no copy. A memory pool declares a pool and the capacity
    serQ sizes it by (`waitq cap 8;` in the engine and `pool waitq on P {
    queue fifo; }`, or `kv cap N;` in the device and `pool kv on gpu { … }`);
    KV blocks only where the device has none, since serQ takes one KV pool
