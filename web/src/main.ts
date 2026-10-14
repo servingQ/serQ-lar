@@ -26,6 +26,7 @@ const DRAW_AFTER = 120;
 const RUN_AFTER = 700;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const root = document.documentElement;
 const select = $<HTMLSelectElement>("program");
 const view = $<HTMLDivElement>("view");
 const canvas = $<HTMLCanvasElement>("overlay");
@@ -86,14 +87,26 @@ let last: Report | null = null;
 let selected: Selection = null;
 let runTimer = 0;
 
+/** serQ's figure keys its dark colours on the system's theme alone; while the
+ * page forces one, its media query is made to say so. Stopgap: docs/upstream.md U16. */
+const SYSTEM_DARK = "(prefers-color-scheme: dark)";
+function themeFigure() {
+  const style = view.querySelector<SVGStyleElement>("svg style");
+  if (!style) return;
+  const media = { dark: "all", light: "not all" }[root.dataset.theme ?? ""] ?? SYSTEM_DARK;
+  style.textContent = (style.textContent ?? "").replace(/@media (\(prefers-color-scheme: dark\)|all|not all) \{/, `@media ${media} {`);
+}
+
 /** serQ refused the text: the last figure stays, dimmed, under serQ's words. */
 function fail(message: string) {
   status.textContent = "error";
+  root.classList.remove("busy");
+  root.classList.add("failed");
   view.classList.add("stale");
   report.classList.add("stale");
   metrics.classList.add("stale");
   if (player) player.playing = false;
-  play.textContent = "Play";
+  showPlaying(false);
   diag.textContent = message;
   diag.hidden = false;
   editor.diagnose(message);
@@ -131,6 +144,7 @@ async function redraw(runNow = false) {
     const svg = view.querySelector("svg")!;
     svg.removeAttribute("width");
     svg.removeAttribute("height");
+    themeFigure();
     const vb = svg.viewBox.baseVal;
     camera.figure(vb.width, vb.height);
     player?.stop();
@@ -139,6 +153,7 @@ async function redraw(runNow = false) {
     markSelected();
   }
   showGraph();
+  root.classList.remove("busy", "failed");
   status.textContent = `drawn in ${drawn.ms.toFixed(1)} ms` + (key === ranFor ? ranNote : "");
   if (key === ranFor) {
     view.classList.remove("stale");
@@ -161,6 +176,7 @@ async function runIt(gen: number, key: string) {
   // a run still going is for older text: stop it rather than wait for it
   if (runner.busy) runner.kill();
   status.textContent += " · running…";
+  root.classList.add("busy");
   const ran = await runner.ask({ cmd: "run", src, horizon: H, seed: S, log: LOG_CAP });
   if (gen !== generation) return;
   if (!ran.ok) return fail(ran.error);
@@ -177,6 +193,7 @@ async function runIt(gen: number, key: string) {
   const at = anchors(svg);
   ranNote = ` · ran ${H} s of simulated time in ${ran.ms.toFixed(0)} ms`;
   status.textContent = status.textContent.replace(" · running…", "") + ranNote;
+  root.classList.remove("busy");
   const n = log.events.length.toLocaleString("en");
   banner.innerHTML = `Replaying serQ's log of this run: <b>${n}</b> events over ${H} s, seed ${S}.` +
     (log.truncated ? ` The log stopped at the cap of ${LOG_CAP.toLocaleString("en")} events; the run went on.` : "") +
@@ -189,7 +206,7 @@ async function runIt(gen: number, key: string) {
   player.skipIdle = skip.checked;
   player.onTick = tick;
   player.playing = true;
-  play.textContent = "Pause";
+  showPlaying(true);
   tick(0);
 }
 
@@ -207,13 +224,20 @@ function poolStages(ir: { pools: { admit_via?: number | null }[]; stages: { name
   return out;
 }
 
+/** The play button's face: a triangle to play, two bars to pause. */
+function showPlaying(on: boolean) {
+  play.classList.toggle("playing", on);
+  play.setAttribute("aria-label", on ? "Pause" : "Play");
+  play.title = on ? "Pause" : "Play";
+}
+
 function tick(t: number) {
   if (!player) return;
   scrub.value = String(t);
   clock.textContent = `t = ${t.toFixed(3)} s` + (player.skipping ? " ▸▸" : "");
   const c = player.counts();
   counts.textContent = `${c.queue} waiting · ${c.resident} in a station` + (c.away ? ` · ${c.away} at a tool` : "");
-  if (!player.playing) play.textContent = "Play";
+  if (!player.playing) showPlaying(false);
   dashboard.cursor(t);
 }
 
@@ -388,14 +412,23 @@ toolLink.onclick = () => {
   compose.connecting = true;
   showMode();
 };
-// ------------------------------------------------------------ the Edit view ----
+// ------------------------------------------------------------ the views ----
 
-/** Replay: serQ's figure with the run over it. Edit: the same deployment as nodes to drag and wire. */
-let mode: "replay" | "edit" = "replay";
+/** Replay: serQ's figure with the run over it. Flow: the same deployment as
+ * nodes to drag and wire. Code: the program, the width of the page. Metrics:
+ * the run's numbers over time. */
+type Tab = "replay" | "flow" | "code" | "metrics";
+const TABS: Tab[] = ["replay", "flow", "code", "metrics"];
+let tab: Tab = "replay";
 const flowEl = $<HTMLDivElement>("flow");
-const tabReplay = $<HTMLButtonElement>("tab-replay");
-const tabEdit = $<HTMLButtonElement>("tab-edit");
-const replayTools = $<HTMLSpanElement>("replay-tools");
+const replayPane = $<HTMLDivElement>("replay-pane");
+const mainEl = $<HTMLElement>("main");
+const tabButtons = [...document.querySelectorAll<HTMLButtonElement>(".tabbar button[data-tab]")];
+const tabInk = document.querySelector<HTMLSpanElement>(".tab-ink")!;
+/** The program's choices (example, Run again, horizon, seed): atop the sidebar in Flow and Code, in the run bar in Replay and Metrics. */
+const progHead = $<HTMLDivElement>("prog-head");
+const runBar = $<HTMLDivElement>("run-bar");
+const sidebarEl = $<HTMLElement>("sidebar");
 
 /** A node of the Edit view as an end of an arrow: the arrival (or the router's decision, the start of the way), a station, or a draft. */
 function endOf(id: string): { from?: From; to?: To; nic?: Draft } {
@@ -435,7 +468,7 @@ let editView: Promise<{ show(g: ReturnType<typeof graphOf>): void }> | null = nu
 
 /** Give the Edit view serQ's graph of the figure as drawn now. */
 function showGraph() {
-  if (mode !== "edit" || !drawnFrom) return;
+  if (tab !== "flow" || !drawnFrom) return;
   const svg = view.querySelector("svg");
   if (!svg) return;
   const g = graphOf(svg, JSON.parse(drawnFrom.ir), [...compose.draftList]);
@@ -444,22 +477,127 @@ function showGraph() {
 }
 compose.onDrafts = showGraph;
 
-function setMode(m: "replay" | "edit") {
-  mode = m;
-  tabReplay.setAttribute("aria-selected", String(m === "replay"));
-  tabEdit.setAttribute("aria-selected", String(m === "edit"));
-  tabReplay.setAttribute("aria-pressed", String(m === "replay"));
-  tabEdit.setAttribute("aria-pressed", String(m === "edit"));
-  flowEl.hidden = m !== "edit";
-  replayTools.hidden = m !== "replay";
-  // the figure stays laid out (the graph is read off it), out of sight
-  view.classList.toggle("offstage", m === "edit");
-  view.style.width = m === "edit" ? `${flowEl.parentElement!.clientWidth}px` : "";
+/** Slide the selected tab's pill under it. */
+function inkTab() {
+  const b = tabButtons.find((x) => x.dataset.tab === tab);
+  if (!b) return;
+  tabInk.style.width = `${b.offsetWidth}px`;
+  tabInk.style.transform = `translateX(${b.offsetLeft - 3}px)`;
+}
+
+function setTab(t: Tab) {
+  tab = t;
+  root.dataset.tab = t;
+  for (const b of tabButtons) b.setAttribute("aria-selected", String(b.dataset.tab === t));
+  inkTab();
+  // the sidebar is Flow's (and Code's, the width of the page); elsewhere the stage has the page
+  const bar = t === "replay" || t === "metrics";
+  if (bar && progHead.parentElement !== runBar) runBar.append(progHead);
+  if (!bar && progHead.parentElement !== sidebarEl) sidebarEl.prepend(progHead);
+  progHead.classList.toggle("as-row", t !== "flow");
+  // the figure stays laid out (the graph is read off it), out of sight, as wide as the stage
+  replayPane.classList.toggle("offstage", t !== "replay");
+  replayPane.style.width = t === "replay" ? "" : `${mainEl.clientWidth}px`;
+  if (t === "code") editor.view.focus();
+  if (location.hash !== `#${t}`) history.replaceState(null, "", `#${t}`);
   showGraph();
 }
-tabReplay.onclick = () => setMode("replay");
-tabEdit.onclick = () => setMode("edit");
-setMode("replay");
+for (const b of tabButtons) b.onclick = () => setTab(b.dataset.tab as Tab);
+new ResizeObserver(inkTab).observe(tabButtons[0].parentElement!);
+setTab(TABS.find((t) => `#${t}` === location.hash) ?? "replay");
+window.addEventListener("hashchange", () => {
+  const t = TABS.find((x) => `#${x}` === location.hash);
+  if (t && t !== tab) setTab(t);
+});
+
+// ------------------------------------------------------------ the sidebar ----
+
+/** The page's memory of the viewer's choices: none in a private window, and the page works without it. */
+const remember = (k: string, v: string) => {
+  try {
+    localStorage.setItem(`serq-lar:${k}`, v);
+  } catch {}
+};
+const recall = (k: string) => {
+  try {
+    return localStorage.getItem(`serq-lar:${k}`);
+  } catch {
+    return null;
+  }
+};
+
+/** The program's sidebar: open or closed (Ctrl+B), as wide as the viewer dragged it; both remembered. */
+const narrow = matchMedia("(max-width: 860px)");
+const sidebarToggle = $<HTMLButtonElement>("sidebar-toggle");
+const sidebarOpen = () => root.dataset.sidebar !== "closed";
+function setSidebar(open: boolean) {
+  if (open) delete root.dataset.sidebar;
+  else root.dataset.sidebar = "closed";
+  // on a phone the drawer covers the stage: it is not what the next visit opens with
+  if (!narrow.matches) remember("sidebar", open ? "open" : "closed");
+  sidebarToggle.setAttribute("aria-expanded", String(open));
+}
+sidebarToggle.setAttribute("aria-expanded", String(sidebarOpen()));
+sidebarToggle.onclick = () => setSidebar(!sidebarOpen());
+$<HTMLButtonElement>("sidebar-close").onclick = () => setSidebar(false);
+$<HTMLDivElement>("scrim").onclick = () => setSidebar(false);
+window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b" && tab === "flow") {
+    e.preventDefault();
+    setSidebar(!sidebarOpen());
+  }
+});
+{
+  const w = Number(recall("sidebar-w"));
+  if (w >= 260) root.style.setProperty("--sidebar-w", `${w}px`);
+  const grip = $<HTMLDivElement>("sidebar-grip");
+  grip.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    root.classList.add("resizing");
+    const left = $("sidebar").getBoundingClientRect().left;
+    let px = 0;
+    const move = (m: PointerEvent) => {
+      px = Math.round(Math.min(Math.max(m.clientX - left, 260), window.innerWidth * 0.7));
+      root.style.setProperty("--sidebar-w", `${px}px`);
+    };
+    const up = () => {
+      root.classList.remove("resizing");
+      grip.removeEventListener("pointermove", move);
+      if (px) remember("sidebar-w", String(px));
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", up, { once: true });
+    grip.addEventListener("pointercancel", up, { once: true });
+  });
+}
+// the stage changes width with the sidebar: the off-stage figure follows it
+new ResizeObserver(() => {
+  if (tab !== "replay") replayPane.style.width = `${mainEl.clientWidth}px`;
+}).observe(mainEl);
+
+// ------------------------------------------------------------ the theme ----
+
+/** System, light, dark, round again; remembered (index.html applies it before the first paint). */
+{
+  const button = $<HTMLButtonElement>("theme");
+  const show = () => {
+    const m = root.dataset.theme ?? "system";
+    button.dataset.mode = m;
+    button.title = `Theme: ${m === "system" ? "follows the system" : m}`;
+  };
+  button.onclick = () => {
+    const next = ({ system: "light", light: "dark", dark: "system" } as Record<string, string>)[root.dataset.theme ?? "system"];
+    if (next === "system") delete root.dataset.theme;
+    else root.dataset.theme = next;
+    remember("theme", next);
+    show();
+    themeFigure();
+    // the canvases read the colours when they draw: the replay's every frame, the panels now
+    dashboard.cursor(player?.t ?? 0);
+  };
+  show();
+}
 
 $<HTMLButtonElement>("add-prefill").onclick = () => compose.add("prefill");
 $<HTMLButtonElement>("add-decode").onclick = () => compose.add("decode");
@@ -498,7 +636,7 @@ play.onclick = () => {
   if (!player) return;
   if (player.t >= Number(scrub.max)) player.seek(0);
   player.playing = !player.playing;
-  play.textContent = player.playing ? "Pause" : "Play";
+  showPlaying(player.playing);
 };
 scrub.oninput = () => {
   player?.seek(Number(scrub.value));

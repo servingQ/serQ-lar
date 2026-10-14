@@ -49,7 +49,7 @@ See [upstream.md](upstream.md), U10.
    N engines (llm-d's InferencePool), a family `queue D[N]`; its call
    chooses a member (`choose k in N by (work(D[k]))`), and its inspector
    steps N.
-4. **The Edit view** (React Flow, the Edit tab). serQ's graph as nodes to
+4. **The Edit view** (React Flow, the Flow tab). serQ's graph as nodes to
    drag and wire: the nodes and arrows are read off serQ's figure
    (`data-node`, `data-from`, `data-to`, `data-copy`), the kinds off the IR,
    the layout is serQ's with its columns and rows kept and tightened

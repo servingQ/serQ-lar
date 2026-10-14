@@ -34,8 +34,6 @@ export class Camera {
     const same = Math.abs(w - this.W) < 0.25 * this.W && Math.abs(h - this.H) < 0.25 * this.H;
     this.W = w;
     this.H = h;
-    // the view takes the figure's shape, up to most of the window's height
-    this.el.style.height = `${Math.round(Math.max(300, Math.min(this.el.clientWidth * (h / w), window.innerHeight * 0.72)))}px`;
     if (this.fitted || !same) this.fit();
     else this.apply();
   }

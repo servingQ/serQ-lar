@@ -25,13 +25,14 @@ server, and the site must stay deployable to GitHub Pages.
   cut the log short, the banner says so.
 - **Light, and not hand-made where a library fits.** A focused library for
   a hard widget is welcome rather than one built by hand: CodeMirror is
-  the text, React Flow the Edit view, libavoid its arrows' routes. React
-  and libavoid are the Edit view's alone, loaded when it is opened; the
-  rest of the page has no UI framework. The Replay view is serQ's
-  figure; the Edit view draws serQ's graph (its nodes, arrows and layout
-  read off that figure), never one of its own, and every arrow drawn
-  there goes into the text. The wasm is the budget. Report the size
-  (`scripts/build-wasm.sh` prints it) when it moves by more than 10 %.
+  the text, React Flow the Edit view (the Flow tab), libavoid its arrows'
+  routes, Tailwind the page's styles. React and libavoid are the Edit
+  view's alone, loaded when it is opened; the rest of the page has no UI
+  framework. The Replay view is serQ's figure; the Edit view draws serQ's
+  graph (its nodes, arrows and layout read off that figure), never one of
+  its own, and every arrow drawn there goes into the text. The wasm is the
+  budget. Report the size (`scripts/build-wasm.sh` prints it) when it
+  moves by more than 10 %.
 - **Numbers in docs are measured**, with the date, the serQ commit and the
   command (`scripts/bench.mjs`).
 
