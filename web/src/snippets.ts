@@ -78,6 +78,11 @@ export function pool(name: string, on: string, kind: "slots" | "blocks"): string
   return kind === "slots" ? `pool ${name} on ${on} { queue fifo; }` : `pool ${name} on ${on} { block 16; evict lru; }`;
 }
 
+/** A capacity of a device or an engine, which a pool of that name is sized by. */
+export function capacity(name: string, cap: string): string {
+  return `${name} cap ${cap};`;
+}
+
 /** A copy of queue `text` (named `from`) named `to`: its name where it names itself. */
 export function rename(text: string, from: string, to: string): string {
   // a queue's name is a word: `[A-Za-z_]\w*`, nothing to escape

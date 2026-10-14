@@ -426,6 +426,9 @@ const editHost: EditHost = {
     }
   },
   layoutKey: () => `serq-lar:layout:${select.value}`,
+  instance: (id) => compose.makeInstance(id),
+  nic: (id) => compose.nicDraft(id),
+  pool: (id, name, kind, cap) => compose.declarePool(id, name, kind, cap),
 };
 /** The Edit view, loaded the first time it is asked for: React and React Flow are its alone. */
 let editView: Promise<{ show(g: ReturnType<typeof graphOf>): void }> | null = null;

@@ -47,7 +47,12 @@ one); in Connect mode an arrow dragged from the arrival or a station to
 it writes the queue and its call into the program. The Edit tab shows the
 same deployment as nodes to drag and wire (React Flow): serQ's stations
 and arrows, where serQ placed them, each with an input on its left and an
-output on its right; an arrow drawn from one handle to another is written
+output on its right; an instance serQ draws as a panel (an engine with its
+NIC) is a box holding its members, dragged as one; each station lists its
+memory pools (a declared pool no hold takes yet, dashed); a chosen engine
+has Make instance (its queue a family its calls choose a member of),
++ NIC and + Memory pool on a toolbar; the arrows are routed around the
+nodes (libavoid), none on top of another; an arrow drawn from one handle to another is written
 into the program, a node dragged stays where it was put (in this browser
 only), and Delete removes a station. Click a station for
 its instances, a NIC, a pool, the KV copy's pull or push (serQ writes
@@ -73,6 +78,7 @@ web/                Vite + TypeScript, no framework
   src/compose.ts      the palette, the drafts, the arrows, the inspector
   src/flow/graph.ts   serQ's figure as a graph: its nodes, arrows and layout
   src/flow/EditView.tsx  the Edit view in React Flow, loaded when opened
+  src/flow/route.ts   the Edit view's arrows, routed around the nodes by libavoid
   src/anchors.ts      where each stage, pool, arrival and exit is in the SVG
   src/events.ts       the run log's shape (serQ's docs/reference/log.md)
   src/player.ts       replays the log on a canvas over the SVG

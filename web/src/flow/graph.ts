@@ -21,6 +21,20 @@ export interface GraphNode {
   x: number;
   y: number;
   draft?: Draft;
+  /** The memory pools it holds (an engine's request slots and KV blocks). */
+  pools?: GraphPool[];
+}
+
+/** A memory pool, as serQ's IR declares it. */
+export interface GraphPool {
+  /** serQ's name (`P.kv`), and the name within its queue (`kv`). */
+  id: string;
+  name: string;
+  /** KV blocks (the pool has a block size), or request slots. */
+  kind: "blocks" | "slots";
+  cap: string;
+  /** Whether serQ's figure draws it: a pool no hold takes is declared, not drawn. */
+  drawn: boolean;
 }
 
 export interface GraphEdge {
@@ -32,14 +46,32 @@ export interface GraphEdge {
   poster?: string;
 }
 
+/** An instance: the panel serQ draws around the engine, NIC and pools one
+ * `choose` variable indexes (`prefill instance P[i]`). */
+export interface GraphInstance {
+  id: string;
+  /** serQ's words over the panel: `prefill instance P[i]`, `choose i of 2`. */
+  title: string;
+  note: string;
+  /** The nodes in it, by the names the arrows use. */
+  members: string[];
+}
+
 export interface Graph {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  instances: GraphInstance[];
 }
 
 interface IrStage {
   name: string;
   kind: Record<string, unknown> | string;
+}
+
+interface IrPool {
+  name: string;
+  cap: number | string;
+  block: number | null;
 }
 
 /** Where sessions arrive from, and where they leave to: no stage of serQ's,
@@ -48,7 +80,7 @@ export const SOURCE = "arrival";
 export const SINK = "exit";
 
 /** The graph of the figure in `svg` (on the page, so that it has a layout), with `drafts` beside it. */
-export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[] }, drafts: Draft[]): Graph {
+export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrPool[] }, drafts: Draft[]): Graph {
   const kinds = new Map<string, { kind: string; count: number }>();
   for (const s of ir.stages) {
     const k = typeof s.kind === "string" ? s.kind : Object.keys(s.kind)[0];
@@ -98,6 +130,8 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[] }, drafts: D
     if (from && to && !edges.some((e) => e.from === from && e.to === to))
       edges.push({ id: `${from}>${to}`, from, to, kind: "copy", copy: r.dataset.copy as "pull" | "push", poster: r.dataset.poster });
   }
+  poolsOf(svg, ir.pools ?? [], nodes);
+  const instances = instancesOf(svg, nodes);
   compact(nodes, edges);
   // drafts wait in a row under the figure until an arrow reaches them
   const below = Math.max(0, ...nodes.map((n) => n.y)) + ROW * 1.5;
@@ -106,7 +140,60 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[] }, drafts: D
     const sub = d.kind === "queue" ? (d.family ? `draft · pool of ${d.family} · ${d.role}` : `draft · ${d.role}`) : d.kind === "stage" ? "draft · delay" : "draft · NIC: connect it to the reader";
     nodes.push({ id: draftId(i), kind: "draft", label: name, sub, x: i * COL, y: below, draft: d });
   });
-  return { nodes, edges };
+  return { nodes, edges, instances };
+}
+
+/** Each pool of the IR on the node that holds it: a queue's (`P.kv`) on
+ * the queue's station; one named by no queue, on the station serQ draws its
+ * drum nearest, if it draws one. A family's pool is one pool. */
+function poolsOf(svg: SVGSVGElement, pools: IrPool[], nodes: GraphNode[]) {
+  const stations = nodes.filter((n) => n.kind !== "decision");
+  const seen = new Set<string>();
+  for (const p of pools) {
+    if (seen.has(p.name)) continue;
+    seen.add(p.name);
+    const drum = svg.querySelector<SVGGElement>(`g[data-pool="${CSS.escape(p.name)}"][data-role="drum"]`);
+    const dot = p.name.lastIndexOf(".");
+    let owner = dot > 0 ? stations.find((n) => n.id === p.name.slice(0, dot)) : undefined;
+    if (!owner && drum) {
+      const b = drum.getBBox();
+      const c = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+      owner = stations.reduce<GraphNode | undefined>((a, n) => (!a || Math.hypot(n.x - c.x, n.y - c.y) < Math.hypot(a.x - c.x, a.y - c.y) ? n : a), undefined);
+    }
+    if (!owner) continue;
+    const cap = typeof p.cap === "number" ? (p.cap >= 1e4 ? `${Math.round(p.cap / 1000)}k` : String(p.cap)) : p.cap;
+    (owner.pools ??= []).push({ id: p.name, name: dot > 0 ? p.name.slice(dot + 1) : p.name, kind: p.block !== null ? "blocks" : "slots", cap, drawn: drum !== null });
+  }
+}
+
+/** The panels serQ draws for its instances (`rect.instance`), with the nodes
+ * that stand in each and the words serQ wrote over it (at the panel's top
+ * left, 7 above its edge).
+ * Stopgap: the panel names no nodes, so a node is a member when its centre
+ * is inside the panel; a queue's NIC (`P.nic`), indexed with its queue, is a
+ * member of its queue's panel wherever serQ draws it (a push's bracket of
+ * both NICs stands inside the decoder's panel). docs/upstream.md U15 asks
+ * serQ for `data-nodes` on the panel, as a bracket has. */
+function instancesOf(svg: SVGSVGElement, nodes: GraphNode[]): GraphInstance[] {
+  const texts = [...svg.querySelectorAll<SVGTextElement>("text")].filter((t) => !t.closest("g[data-node], g[data-pool]"));
+  const panels = [...svg.querySelectorAll<SVGRectElement>("rect.instance")].map((r) => r.getBBox());
+  const inside = (b: DOMRect, n: GraphNode) => n.x > b.x && n.x < b.x + b.width && n.y > b.y && n.y < b.y + b.height;
+  const panelOf = (n: GraphNode): DOMRect | undefined => {
+    const queue = n.kind === "nic" ? nodes.find((q) => q.id === n.id.slice(0, -4)) : undefined;
+    return queue ? panels.find((b) => inside(b, queue)) ?? panels.find((b) => inside(b, n)) : panels.find((b) => inside(b, n));
+  };
+  const out: GraphInstance[] = [];
+  for (const b of panels) {
+    const members = nodes.filter((n) => n.kind !== "decision" && panelOf(n) === b);
+    if (!members.length) continue;
+    const words = texts
+      .filter((t) => Math.abs(Number(t.getAttribute("y")) - (b.y - 7)) < 1 && Number(t.getAttribute("x")) >= b.x && Number(t.getAttribute("x")) < b.x + b.width)
+      .sort((p, q) => Number(p.getAttribute("x")) - Number(q.getAttribute("x")))
+      .map((t) => t.textContent?.trim() ?? "");
+    const engine = members.find((n) => n.kind === "engine") ?? members[0];
+    out.push({ id: `instance:${engine.id}`, title: words[0] || `instance ${engine.label}`, note: words.slice(1).join(" "), members: members.map((n) => n.id) });
+  }
+  return out;
 }
 
 /** The spacing of the Edit view's columns and rows. */

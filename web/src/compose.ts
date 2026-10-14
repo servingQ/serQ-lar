@@ -4,7 +4,7 @@
 // the text; the inspector changes the station chosen in the figure. Every
 // change is an edit of the text (edit.ts), which serQ then draws again.
 
-import { apply as _apply, addPool, connect, copy, fresh, remove, resize, toggle, type Draft, type Edit, type From, type To } from "./edit";
+import { apply as _apply, connect, copy, declarePool, fresh, instance, remove, resize, toggle, type Draft, type Edit, type From, type To } from "./edit";
 import type { Outline, Queue } from "./outline";
 import * as snip from "./snippets";
 
@@ -224,6 +224,44 @@ export class Compose {
     this.host.say(`${name} removed, with its calls and copies; serQ says if anything else names it. Ctrl+Z undoes it.`);
   }
 
+  /** Make a station's queue, engine and NIC, an instance (edit.ts `instance`). */
+  makeInstance(stage: string) {
+    const ol = this.host.outline();
+    if (!ol) return this.host.say("serQ cannot read the text as it is: fix it first.", true);
+    const name = stage.replace(/\.nic$/, "");
+    const edits = instance(this.host.text(), ol, name);
+    if (typeof edits === "string") return this.host.say(edits, true);
+    const others = ol.relations.flatMap((r) => (r.source === name ? [r.reader] : r.reader === name ? [r.source] : [])).filter((x) => !ol.queues.find((q) => q.name === x)?.family);
+    this.host.apply(edits);
+    this.host.say(
+      `${name} and ${name}.nic: an instance, ${name}[1], its calls choosing a member` +
+        (others.length ? `; ${others.join(", ")} too, at the other end of its KV copy (serQ copies between two families)` : "") +
+        `. + beside its instances makes more. Ctrl+Z undoes it.`,
+    );
+  }
+
+  /** A draft NIC for a station's queue: placed by dragging it to the queue that reads its KV. */
+  nicDraft(stage: string) {
+    const name = stage.replace(/\.nic$/, "");
+    if (!this.drafts.some((d) => d.kind === "nic" && d.queue === name)) this.drafts.push({ kind: "nic", queue: name });
+    this.renderTray();
+    this.host.say(`Draft ${name}.nic: drag from it to the queue that reads the KV from ${name}.`);
+  }
+
+  /** Declare a memory pool in a station's queue, with its capacity: request slots on its engine, or KV blocks on its device. */
+  declarePool(stage: string, name: string, kind: "slots" | "blocks", cap: string) {
+    const ol = this.host.outline();
+    if (!ol) return this.host.say("serQ cannot read the text as it is: fix it first.", true);
+    const q = ol.queues.find((x) => x.name === stage.replace(/\.nic$/, ""));
+    if (!q) return this.host.say(`\`${stage}\` is no queue: declare its pool in the text.`, true);
+    const edits = declarePool(this.host.text(), ol, q.name, name, kind, cap);
+    if (typeof edits === "string") return this.host.say(edits, true);
+    this.host.apply(edits);
+    this.host.say(
+      `Memory pool ${q.name}.${name}: ${kind === "slots" ? `${cap} request slots on its engine` : `${cap} tokens of KV blocks on its device`}, declared; dashed in the Edit view until a hold takes it. Ctrl+Z undoes it.`,
+    );
+  }
+
   /** Discard a draft. */
   discard(d: Draft) {
     this.drafts = this.drafts.filter((x) => x !== d);
@@ -282,8 +320,9 @@ export class Compose {
       );
     }
     if (!q.members.some((m) => m.kind === "nic")) parts.push(`<button data-act="nic" title="A NIC for a KV copy out of this queue">+ NIC</button>`);
+    if (!q.family && q.members.some((m) => m.kind === "engine")) parts.push(`<button data-act="instance" title="Bundle the engine and its NIC as an instance: the queue a family its calls choose a member of">⊞ Make instance</button>`);
     parts.push(
-      `<form class="group pool"><input name="name" placeholder="pool name" size="8" aria-label="Pool name" required pattern="[A-Za-z_][A-Za-z0-9_]*"><select name="kind" aria-label="Pool kind"><option value="slots">request slots</option><option value="blocks">KV blocks</option></select><button title="A memory pool in this queue: request slots on its engine, or KV blocks on its device">+ Memory pool</button></form>`,
+      `<form class="group pool"><input name="name" placeholder="pool name" size="8" aria-label="Pool name" required pattern="[A-Za-z_][A-Za-z0-9_]*"><select name="kind" aria-label="Pool kind"><option value="slots">request slots</option><option value="blocks">KV blocks</option></select><input name="cap" value="16" size="5" aria-label="Capacity: slots, or tokens of KV" required><button title="A memory pool in this queue: request slots on its engine, or KV blocks on its device">+ Memory pool</button></form>`,
     );
     if (q.roles.some((r) => r === "prefill" || r === "decode")) parts.push(`<button data-act="dup" title="A draft copy of this queue, to place with an arrow">Duplicate</button>`);
     parts.push(`<button data-act="remove" class="danger">Remove</button>`);
@@ -314,9 +353,9 @@ export class Compose {
         return run(toggle(src, ol, r), `The copy ${r.source} → ${r.reader} is now a ${r.mode === "pull" ? "push: the source posts each write" : "pull: the reader starts each read"}.`);
       }
       case "nic":
-        this.drafts.push({ kind: "nic", queue: q.name });
-        this.renderTray();
-        return this.host.say(`Draft ${q.name}.nic: drag its card to the queue that reads the KV from ${q.name}.`);
+        return this.nicDraft(q.name);
+      case "instance":
+        return this.makeInstance(q.name);
       case "dup": {
         const name = this.freshName(q.name);
         const text = snip.rename(src.slice(q.range[0], q.range[1]), q.name, name);
@@ -337,16 +376,8 @@ export class Compose {
     e.preventDefault();
     const it = this.queue();
     if (!it) return;
-    const form = e.target as HTMLFormElement;
-    const data = new FormData(form);
-    const name = String(data.get("name"));
-    const kind = data.get("kind") === "blocks" ? "blocks" : "slots";
-    const device = it.q.members.find((m) => m.kind === "device")?.name;
-    const on = kind === "slots" ? it.q.name : device ?? it.q.name;
-    const edits = addPool(this.host.text(), it.ol, it.q.name, snip.pool(name, on, kind));
-    if (typeof edits === "string") return this.host.say(edits, true);
-    this.host.apply(edits);
-    this.host.say(`Memory pool ${name} on ${on}: written into ${it.q.name}. It shows in the figure once a hold takes it.`);
+    const data = new FormData(e.target as HTMLFormElement);
+    this.declarePool(it.q.name, String(data.get("name")), data.get("kind") === "blocks" ? "blocks" : "slots", String(data.get("cap")).trim() || "16");
   }
 }
 
