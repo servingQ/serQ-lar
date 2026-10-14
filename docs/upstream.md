@@ -150,3 +150,16 @@ is serQ's to apply, not the page's to repeat from the log. Issue draft:
 >     pub itl: Vec<(f64, f64)>,
 > ```
 > `--dump DIR`이 `stage/<name>.itl.csv`를 쓴다. JSON은 그대로(샘플은 `--dump`의 몫, U5의 둘째 항목과 같은 선).
+
+## U9. The program's colours — landed
+
+serQ [#620](https://github.com/servingQ/serQ/issues/620),
+[#621](https://github.com/servingQ/serQ/pull/621): the four roles serQ's
+docs colour a program by (structure, statements, options, what a program
+reads, and the `~` of a draw) lived only in the Pygments lexer
+(`docs/hooks/serq_lexer.py`), which wasm cannot read, and `lex` dropped
+everything on a string not closed yet. `serq::frontend::highlight` now
+holds them over the lexer's tokens, and `lexer::lex_partial` keeps what
+it read before an error. `tokens()` in `crates/serq-wasm` returns its
+pieces and the editor colours them (`web/src/main.ts`, `.code` in
+`web/src/style.css`). In serQ v0.1.6-alpha.3.

@@ -18,6 +18,7 @@ const LOG_CAP = 400_000;
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const select = $<HTMLSelectElement>("program");
 const source = $<HTMLTextAreaElement>("source");
+const lit = $<HTMLPreElement>("lit");
 const view = $<HTMLDivElement>("view");
 const canvas = $<HTMLCanvasElement>("overlay");
 const tip = $<HTMLDivElement>("tip");
@@ -60,6 +61,39 @@ function serq(q: Ask): Promise<Response> {
     worker.postMessage({ ...q, id });
   });
 }
+
+// ------------------------------------------------------------ source ----
+
+/** serQ's roles left uncoloured: a program's own names, white space, and
+ * what follows a lexical error (a string not closed yet). */
+const PLAIN = new Set(["name", "space", "unlexed"]);
+
+/** Show the program under the textarea: plain at once, so the text never
+ * lags what is typed, then in serQ's roles when the worker has cut them
+ * (behind a run, if one is going). A pre drops a last newline; a space
+ * keeps the line the caret is on. */
+function highlight() {
+  const src = source.value;
+  lit.textContent = src + " ";
+  serq({ cmd: "tokens", src }).then((r) => {
+    if (!r.ok || source.value !== src) return;
+    const toks = JSON.parse(r.value) as [string, string][];
+    lit.innerHTML = toks.map(([role, s]) => (PLAIN.has(role) ? esc(s) : `<span class="${role}">${esc(s)}</span>`)).join("") + " ";
+    syncScroll();
+  });
+}
+function syncScroll() {
+  lit.scrollTop = source.scrollTop;
+  lit.scrollLeft = source.scrollLeft;
+}
+let typed = 0;
+source.addEventListener("input", () => {
+  lit.textContent = source.value + " ";
+  syncScroll();
+  clearTimeout(typed);
+  typed = window.setTimeout(highlight, 80);
+});
+source.addEventListener("scroll", syncScroll);
 
 // ------------------------------------------------------------ view ----
 
@@ -229,6 +263,9 @@ for (const n of names) select.add(new Option(n, n));
 select.value = names.includes("llmd_nixl_pull") ? "llmd_nixl_pull" : names[0];
 const load = () => {
   source.value = programs[`./examples/${select.value}.sq`];
+  source.scrollTop = source.scrollLeft = 0;
+  // asked before the run, so the worker cuts the tokens first
+  highlight();
   last = null;
   selected = null;
   report.innerHTML = "";
@@ -268,6 +305,7 @@ dashboard.onSeek = (t) => {
 // the gauges the page offers go into the program, where the viewer sees them, and the run is made again
 dashboard.onAddGauges = (lines) => {
   source.value = withGauges(source.value, lines);
+  highlight();
   drawAndRun();
 };
 serq({ cmd: "version" }).then((r) => {
