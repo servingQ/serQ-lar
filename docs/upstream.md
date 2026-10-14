@@ -327,3 +327,34 @@ Issue draft:
 > ```
 > 1. dark 규칙을 두 번 쓴다: 시스템 dark이면서 `data-theme="light"`가 아닐 때, 그리고 `data-theme="dark"`일 때. 독립 SVG 파일에서는 `:root`가 `<svg>`라 지금과 같이 동작한다.
 > 2. 선택자를 그림의 루트 클래스(`svg.serq`)로 좁혀, inline으로 넣은 문서의 다른 요소(`text`, `.bg`, `.flow` …)에 새지 않게 한다. 지금은 `.flow` 같은 클래스 이름이 페이지 전체에 걸린다.
+
+## U17. The server's request interface, owned by the deployment — landed
+
+serQ [#630](https://github.com/servingQ/serQ/issues/630),
+[#631](https://github.com/servingQ/serQ/pull/631),
+[#633](https://github.com/servingQ/serQ/pull/633): the workload and the
+deployment shared one namespace, so a deployment was bound to its
+workload's variable names (every vLLM server read the client's `K`). Now
+the deployment owns the interface: `server (input, hidden output) reply
+(produced) { … }`, the workload binds it with `send (input: K + n, output:
+o);` (`send (s)` for an attribute as it is) and reads `reply.produced` after
+`turn;`. The server, its routes and the scheduler read only the
+parameters; the workload reads only its own, what it sends as it is,
+`serial` and the reply. A bare `server { … }` takes nothing; the workload's
+`hidden` is a parameter's. No IR change; every example's report is the
+same (serQ `docs/design/request-interface.md`). This is what lets U18 pair
+a workload with a deployment by the signature alone.
+
+## U18. Workload and deployment in separate files
+
+Builds on U17: with the interface, a workload and a deployment pair by the
+server's signature alone. The page then shows them as two texts (side by
+side, tabs at phone width), with a picker each: change one, keep the
+other, run again. The figure's arrival leads to the workload text, a
+station to the deployment's; figure edits always write the deployment.
+The arrow into the first station can carry the request's fields. serQ
+has to compile a set of sources (wasm has no file system) and say which
+file each diagnostic and outline range is in; and to say, from the
+signature, whether a pair fits, so the picker can mark the ones that do
+not without the page reading the programs. A single-file program keeps
+working.
