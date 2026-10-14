@@ -28,11 +28,7 @@
 
         <nav class="tabbar mx-auto" role="tablist" aria-label="View">
           <span class="tab-ink" aria-hidden="true"></span>
-          <button id="tab-replay" role="tab" data-tab="replay" title="serQ's figure, with the run replayed over it">
-            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 8.5v7l5.5-3.5z" fill="currentColor"/></svg>
-            <span>Replay</span>
-          </button>
-          <button id="tab-edit" role="tab" data-tab="flow" title="The deployment as nodes to drag and wire: an arrow between two handles goes into the text">
+          <button id="tab-edit" role="tab" data-tab="flow" title="The deployment, serQ's graph with the run replayed over it: drag and wire it, and an arrow between two handles goes into the text">
             <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="3" y="4" width="7" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="15" width="7" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.5 9v3.5a2 2 0 0 0 2 2h4.5m0 0-2-2m2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             <span>Flow</span>
           </button>
@@ -72,7 +68,7 @@
         <!-- the views -->
         <main id="main" class="stage relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
           <!-- the program's choices; Code is the text alone -->
-          <div id="run-bar" class="run-bar border-b border-line bg-panel" data-show="replay flow metrics">
+          <div id="run-bar" class="run-bar border-b border-line bg-panel" data-show="flow metrics">
             <div id="prog-head" class="prog-head">
               <div class="prog-pick flex items-center gap-2">
                 <select id="program" class="min-w-0 flex-1 font-mono text-[13px]" aria-label="Example program"></select>
@@ -101,32 +97,21 @@
               <div id="crossing" class="crossing" hidden aria-label="What a request carries to the server, and its reply"></div>
             </div>
           </div>
-          <div class="flex flex-col gap-3 p-3 sm:p-4" data-show="replay flow">
-            <!-- Flow: the station chosen, its edits; and what the last edit did, or why it did not -->
-            <div id="inspector" class="inspector" data-show="flow" hidden></div>
-            <p id="say" class="say" aria-live="polite" data-show="flow"></p>
-            <div id="banner" class="banner" data-show="replay"></div>
+          <div class="flex flex-col gap-3 p-3 sm:p-4" data-show="flow">
+            <!-- the station chosen, its edits; and what the last edit did, or why it did not -->
+            <div id="inspector" class="inspector" hidden></div>
+            <p id="say" class="say" aria-live="polite"></p>
+            <div id="banner" class="banner"></div>
           </div>
 
-          <!-- Flow: React Flow, loaded when first opened -->
-          <div class="flex min-h-0 flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4" data-show="flow">
-            <div id="flow" class="flow flex-1"></div>
-          </div>
-
-          <!-- Replay: serQ's figure; it stays laid out off-stage under the other views, where the graph is read off it -->
-          <div class="replay flex flex-col gap-3 px-3 pb-6 sm:px-4" id="replay-pane">
-            <div id="view" class="view">
-              <canvas id="overlay"></canvas>
+          <!-- Flow: serQ's graph in React Flow, loaded when first shown, with the run replayed over it -->
+          <div class="flex min-h-0 flex-1 flex-col gap-3 px-3 pb-6 sm:px-4" data-show="flow">
+            <div class="flow-box relative flex min-h-0 flex-1 flex-col">
+              <div id="flow" class="flow flex-1"></div>
               <div id="tip" class="tip" hidden></div>
-              <div class="zoom" role="group" aria-label="Zoom">
-                <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
-                <span id="zoom-level" class="mono">100%</span>
-                <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
-                <button id="zoom-fit" title="Fit the figure (or double-click it)">Fit</button>
-              </div>
               <pre id="diag" class="diag" hidden title="Click to put the caret where serQ points"></pre>
             </div>
-            <div class="player" data-show="replay">
+            <div class="player">
               <button id="play" class="play" aria-label="Play">
                 <svg class="i-play" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
                 <svg class="i-pause" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6.5 4.5h4v15h-4zm7 0h4v15h-4z" fill="currentColor"/></svg>
@@ -147,19 +132,24 @@
               <label class="check" title="When no session is in any station or queue, jump to the next event"><input id="skip" type="checkbox" checked /> skip idle</label>
               <span id="counts" class="mono counts"></span>
             </div>
-            <div class="legend-box" data-show="replay">
+            <div class="legend-box">
               <ul class="legend">
-                <li><i class="dot ring"></i>waiting in a pool's queue</li>
+                <li><i class="dot ring"></i>waiting at a station, left of its card</li>
                 <li><i class="dot prefill"></i>prefill</li>
                 <li><i class="dot decode"></i>decode</li>
                 <li><i class="dot plain"></i>a transfer, a tool, any other stage</li>
                 <li><i class="dot halo"></i>in the forward pass running now</li>
-                <li><i class="bar"></i>the pass's progress; the budget bar is its tokens</li>
+                <li><i class="bar"></i>an engine's pass: its tokens fill the bar, a line runs as it goes</li>
                 <li><i class="dot flash"></i>preempted</li>
               </ul>
             </div>
-            <!-- one component's part of the report, when one is clicked in the figure -->
-            <div id="report" class="report card" aria-live="polite" data-show="replay"></div>
+            <!-- the chosen station's or pool's part of the report -->
+            <div id="report" class="report card" aria-live="polite"></div>
+          </div>
+
+          <!-- serQ's figure, laid out off the page: the Flow view's graph and words are read off it -->
+          <div class="replay offstage" id="replay-pane" aria-hidden="true">
+            <div id="view" class="view"></div>
           </div>
 
           <!-- Metrics -->

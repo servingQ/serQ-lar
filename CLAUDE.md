@@ -28,9 +28,10 @@ server, and the site must stay deployable to GitHub Pages.
   the text, React Flow the Edit view (the Flow tab), libavoid its arrows'
   routes, Tailwind the page's styles. React and libavoid are the Edit
   view's alone, loaded when it is opened; the rest of the page has no UI
-  framework. The Replay view is serQ's figure; the Edit view draws serQ's
-  graph (its nodes, arrows and layout read off that figure), never one of
-  its own, and every arrow drawn there goes into the text. The wasm is the
+  framework. The deployment has one view, the Flow tab: React Flow draws
+  serQ's graph (its nodes, arrows, layout and words read off serQ's
+  figure, which is laid out off the page), never one of its own; the run
+  replays over it, and every arrow drawn there goes into the text. The wasm is the
   budget. Report the size (`scripts/build-wasm.sh` prints it) when it
   moves by more than 10 %.
 - **Numbers in docs are measured**, with the date, the serQ commit and the

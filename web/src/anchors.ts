@@ -1,7 +1,9 @@
 // Where things are in the deployment view's SVG, by what the program calls
 // them: serQ names each station's stage (`<g data-stage="P">`), each queue
-// glyph's and drum's pool (`data-pool`), the arrival and exit arrows and an
-// engine's budget bar (`data-role`). An array's members share one station.
+// glyph's and drum's pool (`data-pool`), the arrival and exit arrows
+// (`data-role`). An array's members share one station. The figure is laid
+// out off the page: the replay plays on the Flow view's places
+// (flow/replay.ts), and takes from here only what that view does not draw.
 
 export interface Box {
   x: number;
@@ -40,8 +42,14 @@ export interface Anchors {
   /** The stations one job holds at once (a transfer's two NICs): bracketed,
    * with no arrow between them, so a walk treats them as one place. */
   brackets: string[][];
-  /** The used part of each engine's budget bar, and its full width. */
-  budgets: Map<string, { rect: SVGRectElement; full: number }>;
+  /** Each engine's budget bar, by its stage: shows the forward pass running
+   * now (its tokens, as a share of the most any pass of it took, and how far
+   * it has run), or none. */
+  budgets: Map<string, Bar>;
+}
+
+export interface Bar {
+  show(pass: { tokens: number; share: number; done: number } | null): void;
 }
 
 function box(el: SVGGraphicsElement): Box {
@@ -61,18 +69,8 @@ export function anchors(svg: SVGSVGElement): Anchors {
   const vb = svg.viewBox.baseVal;
   const stations = new Map<string, Box>();
   const nodes = new Map<string, Box>();
-  const budgets = new Map<string, { rect: SVGRectElement; full: number }>();
   for (const g of svg.querySelectorAll<SVGGElement>("g[data-node]")) nodes.set(g.dataset.node!, box(g));
-  for (const g of svg.querySelectorAll<SVGGElement>("g[data-stage]")) {
-    const stage = g.dataset.stage!;
-    stations.set(stage, box(g));
-    const bar = g.querySelector<SVGRectElement>('rect[data-role="budget"]');
-    if (bar) {
-      // the writer draws the used part at 0.62 of the bar: the full width is the cell behind it
-      const cell = bar.previousElementSibling as SVGRectElement | null;
-      budgets.set(stage, { rect: bar, full: Number(cell?.getAttribute("width") ?? bar.getAttribute("width")) });
-    }
-  }
+  for (const g of svg.querySelectorAll<SVGGElement>("g[data-stage]")) stations.set(g.dataset.stage!, box(g));
   const pools = new Map<string, PoolAnchor>();
   for (const g of svg.querySelectorAll<SVGGElement>("g[data-pool]")) {
     const pool = g.dataset.pool!;
@@ -96,5 +94,5 @@ export function anchors(svg: SVGSVGElement): Anchors {
     flows.set(from, list);
   }
   const brackets = [...svg.querySelectorAll<SVGRectElement>('rect[data-role="bracket"]')].map((r) => (r.dataset.nodes ?? "").split(" ").filter(Boolean));
-  return { width: vb.width, height: vb.height, stations, pools, arrival, exits, flows, nodes, brackets, budgets };
+  return { width: vb.width, height: vb.height, stations, pools, arrival, exits, flows, nodes, brackets, budgets: new Map() };
 }
