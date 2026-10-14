@@ -56,6 +56,8 @@ export interface EditHost {
   pool(id: string, name: string, kind: "slots" | "blocks", cap: string): void;
   /** A part from the palette made a draft: the draft, and its node's id. */
   add(part: Part): { draft: Draft; id: string };
+  /** Open the Code tab on where a node is written. */
+  code(id: string): void;
 }
 
 /** What the palette makes: an engine, a delay, or a pool of `count` engines. */
@@ -101,10 +103,26 @@ function SerqNode({ id, data, parentId, selected }: NodeProps<SerqNodeT>) {
         </ul>
       ) : null}
       {output && <Handle type="source" position={Position.Right} />}
-      {(n.kind === "engine" || n.kind === "nic") && (
+      {n.kind === "engine" || n.kind === "nic" ? (
         <Tools id={id} engine={n.kind === "engine"} inInstance={!!parentId} hasNic={!!data.nic} hasKv={!!n.pools?.some((p) => p.kind === "blocks")} open={!!selected} />
+      ) : (
+        (n.kind === "station" || n.kind === "delay") && (
+          <NodeToolbar isVisible={!!selected} position={Position.Top} className="ftools">
+            <CodeButton id={id} />
+          </NodeToolbar>
+        )
       )}
     </div>
+  );
+}
+
+/** Open the Code tab on where the node is written. */
+function CodeButton({ id }: { id: string }) {
+  const host = useContext(Host)!;
+  return (
+    <button onClick={() => host.code(id)} title={`Show where ${id} is written, in the Code tab`}>
+      {"</>"} Code
+    </button>
   );
 }
 
@@ -164,6 +182,7 @@ function Tools(props: { id: string; engine: boolean; inInstance: boolean; hasNic
           + Memory pool
         </button>
       )}
+      {!form && <CodeButton id={id} />}
     </NodeToolbar>
   );
 }
