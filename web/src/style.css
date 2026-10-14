@@ -67,9 +67,8 @@ main { display: grid; grid-template-columns: minmax(280px, 400px) 1fr; gap: 16px
 label { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
 #seed { width: 56px; font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
 button, select { font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); cursor: pointer; }
-textarea { width: 100%; height: 46vh; margin-top: 8px; padding: 8px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); resize: vertical; white-space: pre; overflow: auto; }
+textarea { width: 100%; height: 64vh; margin-top: 8px; padding: 8px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); resize: vertical; white-space: pre; overflow: auto; }
 .editor { min-width: 0; }
-#report { max-height: 30vh; overflow: auto; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dim); }
 .stage { min-width: 0; }
 .banner { font-size: 12px; color: var(--dim); margin-bottom: 8px; }
 .view { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -90,3 +89,31 @@ textarea { width: 100%; height: 46vh; margin-top: 8px; padding: 8px; font-size: 
 .dot.flash { background: var(--prefill); box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 2.5px var(--alert); }
 .legend .hint { margin-left: auto; font-style: italic; }
 .bar { display: inline-block; width: 18px; height: 3px; background: var(--busy); }
+
+/* the report: serQ's numbers under the figure, whole or one component's */
+.report { margin-top: 12px; font-size: 12px; }
+.report:empty { display: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.chips .dim { margin-left: 6px; font-size: 11px; }
+.chip { padding: 1px 9px; border-radius: 999px; font-size: 12px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.chip[aria-pressed="true"] { background: var(--decode); border-color: var(--decode); color: #fff; }
+.report .run { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 4px; }
+.report section { margin-top: 12px; }
+.report h3 { font-size: 12px; font-weight: 600; margin: 0 0 4px; }
+.report h3 .dim { font-weight: 400; }
+.scroll { overflow-x: auto; }
+.report table { border-collapse: collapse; white-space: nowrap; }
+.report th, .report td { padding: 3px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: baseline; }
+.report th:first-child, .report td:first-child { padding-left: 0; }
+.report thead th { color: var(--dim); font-weight: 500; }
+.report thead th:not(.name) { text-align: right; }
+.report th small { color: var(--dim); font-weight: 400; font-size: 10px; margin-left: 3px; }
+.report td.n { text-align: right; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.report td.name { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.report table.detail th { color: var(--dim); font-weight: 500; white-space: nowrap; }
+.report table.detail td.n { text-align: left; }
+.report table.detail td.meaning { color: var(--dim); white-space: normal; }
+.report .note { margin: 4px 0 0; color: var(--alert); }
+.report pre.err { color: var(--alert); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.view svg g[data-stage], .view svg g[data-pool] { cursor: pointer; }
+.view svg g.selected { filter: drop-shadow(0 0 1.5px var(--decode)) drop-shadow(0 0 4px var(--decode)); }

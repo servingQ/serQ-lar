@@ -2,6 +2,7 @@ import "./style.css";
 import { anchors } from "./anchors";
 import type { Log } from "./events";
 import { Player } from "./player";
+import { esc, render, type Report, type Selection } from "./report";
 import type { Request, Response } from "./worker";
 
 const programs = import.meta.glob<string>("./examples/*.sq", { query: "?raw", import: "default", eager: true });
@@ -27,7 +28,7 @@ const seed = $<HTMLInputElement>("seed");
 const clock = $<HTMLSpanElement>("clock");
 const counts = $<HTMLSpanElement>("counts");
 const banner = $<HTMLDivElement>("banner");
-const report = $<HTMLPreElement>("report");
+const report = $<HTMLDivElement>("report");
 
 // ------------------------------------------------------------ serQ ----
 
@@ -51,6 +52,9 @@ function serq(q: Ask): Promise<Response> {
 
 let player: Player | null = null;
 let generation = 0;
+/** The report of the last run, and the component the viewer chose to read it for. */
+let last: Report | null = null;
+let selected: Selection = null;
 
 function fail(message: string) {
   status.textContent = "error";
@@ -58,7 +62,8 @@ function fail(message: string) {
   player?.stop();
   player = null;
   banner.textContent = "";
-  report.textContent = message;
+  last = null;
+  report.innerHTML = `<pre class="err">${esc(message)}</pre>`;
 }
 
 /** Draw the program, run it with the log, and replay the log over the figure. */
@@ -85,9 +90,10 @@ async function drawAndRun() {
   const ran = await serq({ cmd: "run", src, horizon: H, seed: Number(seed.value) || 1, log: LOG_CAP });
   if (gen !== generation) return;
   if (!ran.ok) return fail(ran.error);
-  const j = JSON.parse(ran.value) as Record<string, unknown> & { log: Log };
+  const j = JSON.parse(ran.value) as Report & { log: Log };
   const log = j.log;
-  report.textContent = summarise(j);
+  last = j;
+  showReport();
   status.textContent = `drawn in ${drawn.ms.toFixed(1)} ms · ran ${H} s of simulated time in ${ran.ms.toFixed(0)} ms`;
   const n = log.events.length.toLocaleString("en");
   banner.innerHTML = `Replaying serQ's log of this run: <b>${n}</b> events over ${H} s, seed ${Number(seed.value) || 1}.` +
@@ -126,20 +132,30 @@ function tick(t: number) {
   if (!player.playing) play.textContent = "Play";
 }
 
-function summarise(j: Record<string, unknown>): string {
-  const lines: string[] = [];
-  for (const [k, v] of Object.entries(j)) {
-    if (typeof v === "number" || typeof v === "string") lines.push(`${k}: ${v}`);
+// ------------------------------------------------------------ report ----
+
+/** The report under the figure: all of it, or the chosen component's part, with that component lit in the figure. */
+function showReport() {
+  report.innerHTML = last ? render(last, selected) : "";
+  for (const g of view.querySelectorAll<SVGGElement>("svg g[data-stage], svg g[data-pool]")) {
+    const kind = g.dataset.stage !== undefined ? "stage" : "pool";
+    const name = kind === "stage" ? g.dataset.stage : g.dataset.pool;
+    g.classList.toggle("selected", selected !== null && selected.kind === kind && selected.name === name);
   }
-  for (const key of ["client", "stages", "pools"]) {
-    const rows = j[key];
-    if (!Array.isArray(rows) && !(rows && typeof rows === "object")) continue;
-    lines.push("", `${key}:`);
-    const list = Array.isArray(rows) ? rows : Object.entries(rows as object).map(([name, v]) => ({ name, ...(v as object) }));
-    for (const row of list) lines.push("  " + JSON.stringify(row, (_k, v) => (Array.isArray(v) && v.length > 8 ? `[${v.length} values]` : v)));
-  }
-  return lines.join("\n");
 }
+
+/** Choose a component to read the report for; choosing it again, or `null`, shows the whole report. */
+function choose(c: Selection) {
+  selected = c && selected && c.kind === selected.kind && c.name === selected.name ? null : c;
+  showReport();
+}
+
+report.addEventListener("click", (e) => {
+  const chip = (e.target as Element).closest<HTMLButtonElement>("button.chip");
+  if (!chip) return;
+  const kind = chip.dataset.kind;
+  choose(kind === "stage" || kind === "pool" ? { kind, name: chip.dataset.name ?? "" } : null);
+});
 
 // ------------------------------------------------------------ tooltip ----
 
@@ -181,6 +197,12 @@ view.addEventListener("click", (e) => {
   const p = figurePoint(e);
   const hit = p && player ? player.hit(p.x, p.y) : null;
   if (player) player.pinned = hit && player.pinned !== hit.mover.key ? hit.mover.key : null;
+  if (hit) return;
+  // no session under the pointer: a station or a drum chooses its component in the report
+  const g = (e.target as Element).closest<SVGGElement>("g[data-stage], g[data-pool]");
+  if (!g) return;
+  choose(g.dataset.stage !== undefined ? { kind: "stage", name: g.dataset.stage } : { kind: "pool", name: g.dataset.pool ?? "" });
+  report.scrollIntoView({ behavior: "smooth", block: "nearest" });
 });
 
 // ------------------------------------------------------------ wiring ----
@@ -189,7 +211,9 @@ for (const n of names) select.add(new Option(n, n));
 select.value = names.includes("llmd_nixl_pull") ? "llmd_nixl_pull" : names[0];
 const load = () => {
   source.value = programs[`./examples/${select.value}.sq`];
-  report.textContent = "";
+  last = null;
+  selected = null;
+  report.innerHTML = "";
   drawAndRun();
 };
 select.onchange = load;
