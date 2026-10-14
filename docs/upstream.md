@@ -270,3 +270,32 @@ version once, so a pre-release has to carry its own. Issue draft:
 > 1. pre-release 태그에도 `workspace.package.version`을 태그와 같게 올린다(U11, `scripts/version.py`가 `X.Y.Z-alpha.N`을 받도록).
 > 2. `release.yml`이 `v*` 태그(pre-release 포함)에서 `cargo publish -p serq`를 한다(crates.io trusted publishing 또는 `CARGO_REGISTRY_TOKEN`). pyserq가 PyPI에 가는 것과 같은 자리.
 > 3. dev 버전(`0.1.6-dev.N`)은 crates.io에 올리지 않는다(버전을 한 번만 쓸 수 있으므로 태그만).
+
+## U15. The nodes of an instance's panel
+
+The Edit view draws each instance serQ draws as a panel (the engine and
+NIC one `choose` variable indexes) as a box holding its members. The
+SVG's panel is `<rect class="instance">` and names no node, unlike a
+copy's bracket (`data-role="bracket" data-nodes="P.nic D.nic"`). Stopgap:
+`web/src/flow/graph.ts` (`instancesOf`) takes a node as a member when its
+centre is inside the panel, a queue's NIC (`P.nic`) as its queue's
+member wherever it stands, and the panel's words by their place (7 above
+its top left). The NIC rule is there because the figure of a push draws
+the bracket of both NICs inside the decoder's panel: with
+`examples/pd-disaggregation/vllm_nixl_push.sq` made two instances (`P[1]`,
+`D[1]`), `P.nic` stands in `decode instance D[m]`.
+Issue draft:
+
+> **배포 그림의 instance 패널이 자기 노드를 SVG에 적기**
+>
+> 배포 그림은 `choose` 변수 하나가 가리키는 엔진·NIC·풀을 instance 패널로 묶어 그리지만, SVG의 패널은 `<rect class="instance">`일 뿐 어느 노드를 묶는지 적지 않는다. 같은 그림의 KV copy 브래킷은 `data-nodes`로 묶는 노드를 적는다. 그래서 그림을 읽는 쪽(serq-lar의 Edit view)은 패널 안에 중심이 든 노드를 기하로 골라야 한다.
+>
+> Before (`serq draw examples/pd-disaggregation/llmd_nixl_pull.sq`):
+> ```
+> <rect class="instance" fill="#f5f7f9" … x="…" y="…" width="545" height="224" rx="10"/>
+> ```
+> After:
+> ```
+> <rect class="instance" data-role="instance" data-nodes="P P.nic" … />
+> ```
+> `src/view/deployment.rs`의 `BoxStyle::Instance` 항목에 `nodes`(패널의 노드 이름, 화살표의 `data-from`/`data-to`와 같은 이름)를 채우고, `src/view/svg.rs`가 브래킷과 같은 방식으로 `data-nodes`를 쓰되 역할은 `data-role="instance"`로 적는다(지금은 `nodes`가 있으면 무조건 `bracket`). `tests/draw.rs`에 예제마다 패널의 `data-nodes`가 그림의 노드인지 확인하는 검사를 둔다.

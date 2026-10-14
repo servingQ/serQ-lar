@@ -337,6 +337,32 @@ export function addPool(src: string, ol: Outline, q: string, text: string): Edit
   return [memberEdit(src, Q, text)];
 }
 
+/** Declare a memory pool `name` in queue `q`, and the capacity serQ sizes
+ * it by (a pool is one of its device's or engine's capacities): request
+ * slots, `name cap N;` in the engine and the pool on the queue; KV blocks,
+ * `name cap N;` (tokens) in the device and the pool on it. serQ takes one KV
+ * pool per device. */
+export function declarePool(src: string, ol: Outline, q: string, name: string, kind: "slots" | "blocks", cap: string): Edit[] | string {
+  const Q = ol.queues.find((x) => x.name === q);
+  if (!Q) return `no queue \`${q}\``;
+  if (Q.members.some((m) => m.kind === "pool" && m.name === name)) return `${q} has a pool \`${name}\` already`;
+  const holder = Q.members.find((m) => m.kind === (kind === "slots" ? "engine" : "device"));
+  if (!holder?.body) return `queue \`${q}\` has no ${kind === "slots" ? "engine" : "device"} to size the pool by`;
+  const pool = addPool(src, ol, q, snip.pool(name, kind === "slots" ? q : holder.name ?? "gpu", kind));
+  if (typeof pool === "string") return pool;
+  return [capacity(src, holder.body, snip.capacity(name, cap)), ...pool];
+}
+
+/** A capacity in a device's or an engine's body: after the last one there, or the body's first line. */
+function capacity(src: string, body: Range, stmt: string): Edit {
+  const inside = src.slice(body[0], body[1]);
+  // `device gpu { …; kv cap X; }` on one line: before its closing brace
+  if (!inside.includes("\n")) return { at: [body[1], body[1]], text: `${/\s$/.test(inside) ? "" : " "}${stmt} ` };
+  const caps = [...inside.matchAll(/\b[A-Za-z_]\w*\s+cap\b[^;{}]*;/g)];
+  const lastCap = caps[caps.length - 1];
+  return lastCap ? after(src, body[0] + lastCap.index + lastCap[0].length, stmt) : first(src, body, stmt);
+}
+
 /** The size of a family: the `let` it names, or the number in its brackets. */
 export function resize(src: string, ol: Outline, q: string, by: number): Edit[] | string {
   const Q = ol.queues.find((x) => x.name === q);
@@ -356,6 +382,61 @@ export function resize(src: string, ol: Outline, q: string, by: number): Edit[] 
   const n = Math.max(1, Number(m[1]) + by);
   const at = decl.range[0] + m.index + m[0].indexOf(m[1]);
   return [{ at: [at, at + m[1].length], text: String(n) }];
+}
+
+/** Make queue `q`'s engine and NIC an instance, the panel serQ draws around
+ * what one `choose` variable indexes: the queue a family of one (`queue
+ * P[1]`), each call choosing its member (`choose k in 1 by (work(P[k]));
+ * P[k].prefill (…);`), and a call reading the KV `from P` reading it from
+ * that member. serQ runs a KV copy between two families or two queues, not
+ * one of each, so the queue at the copy's other end becomes an instance
+ * too, by a variable of its own. A NIC carries a copy (serQ refuses one that
+ * carries none): a queue without one is sent to + NIC first. The instances
+ * stay one each: the −/+ beside them makes them more. */
+export function instance(src: string, ol: Outline, q: string): Edit[] | string {
+  const Q = ol.queues.find((x) => x.name === q);
+  if (!Q) return `\`${q}\` is no queue: an instance is a queue's engine with its NIC`;
+  if (!Q.members.some((m) => m.kind === "engine")) return `queue \`${q}\` has no engine to make an instance of`;
+  if (!Q.members.some((m) => m.kind === "nic")) return `\`${q}\` has no NIC to bundle: + NIC, then drag its card to the queue that reads the KV; then make the instance`;
+  if (Q.family) return `\`${q}[${Q.family}]\` is a family with its NIC already: serQ draws its instance when its calls choose a member (\`choose k in … ; ${q}[k]…\`)`;
+  const ends = [Q, ...ol.relations.flatMap((r) => (r.source === q ? [r.reader] : r.reader === q ? [r.source] : [])).map((n) => ol.queues.find((x) => x.name === n)!)].filter(
+    (x, i, all) => x && !x.family && all.indexOf(x) === i,
+  );
+  const edits: Edit[] = [];
+  let taken = src;
+  for (const X of ends) {
+    const v = freshVar(taken);
+    taken += ` ${v}`;
+    const e = familyOfOne(src, ol, X, v);
+    if (typeof e === "string") return e;
+    edits.push(...e);
+  }
+  return edits;
+}
+
+/** Queue `X` a family of one whose calls choose their member by `v`. */
+function familyOfOne(src: string, ol: Outline, X: Queue, v: string): Edit[] | string {
+  const q = X.name;
+  const calls = callsOf(ol, q);
+  if (!calls.length) return `\`${q}\` is called nowhere the figure can follow: write its call in the text`;
+  const head = new RegExp(`\\bqueue\\s+${q}\\b`).exec(src.slice(X.range[0], X.body[0]));
+  if (!head) return `\`queue ${q}\` is not written where serQ's outline says`;
+  const name = X.range[0] + head.index + head[0].length;
+  const edits: Edit[] = [{ at: [name, name], text: "[1]" }];
+  for (const c of calls) {
+    if (src.slice(c.range[0], c.range[0] + q.length) !== q) return `a call to \`${q}\` is not written as \`${q}.…\`: edit it in the text`;
+    edits.push(before(src, c.range[0], `choose ${v} in 1 by (work(${q}[${v}]));`));
+    edits.push({ at: [c.range[0], c.range[0] + q.length], text: `${q}[${v}]` });
+  }
+  for (const c of ol.calls) {
+    if (c.block === "entry" || c.from !== q) continue;
+    const m = new RegExp(`\\bfrom\\s+${q}\\b(?!\\s*\\[)`).exec(src.slice(c.range[0], c.range[1]));
+    if (m) {
+      const end = c.range[0] + m.index + m[0].length;
+      edits.push({ at: [end, end], text: `[${v}]` });
+    }
+  }
+  return edits;
 }
 
 /** Remove queue `q`: its declaration, the calls to it, the copies it is in. serQ says what else must go. */

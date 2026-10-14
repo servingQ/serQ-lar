@@ -3,7 +3,7 @@
 // (esbuild bundles this file for Node, with serQ's wasm).
 
 import { readFileSync } from "node:fs";
-import { apply, connect, copy, fresh, remove, resize, toggle, type Draft, type Edit } from "../web/src/edit";
+import { apply, connect, copy, declarePool, fresh, instance, remove, resize, toggle, type Draft, type Edit } from "../web/src/edit";
 import { outline as read, type Outline } from "../web/src/outline";
 import * as snip from "../web/src/snippets";
 // @ts-ignore: wasm-bindgen's generated module
@@ -15,7 +15,7 @@ const example = (name: string) => readFileSync(new URL(`../web/src/examples/${na
 const ol = (src: string): Outline => read(outline(src), src);
 let failed = 0;
 
-function check(name: string, src: string, edits: Edit[] | string, expect: { stages?: string[]; text?: string[]; refused?: RegExp }) {
+function check(name: string, src: string, edits: Edit[] | string, expect: { stages?: string[]; text?: string[]; refused?: RegExp; instances?: number }) {
   if (typeof edits === "string") {
     if (expect.refused?.test(edits)) return console.log(`ok   ${name}: refused as meant: ${edits}`);
     failed++;
@@ -45,6 +45,12 @@ function check(name: string, src: string, edits: Edit[] | string, expect: { stag
       console.log(`FAIL ${name}: no station ${s} in the figure`);
       return console.log(diff(src, out));
     }
+  }
+  const panels = (svg.match(/class="instance"/g) ?? []).length;
+  if (expect.instances !== undefined && panels !== expect.instances) {
+    failed++;
+    console.log(`FAIL ${name}: ${panels} instance panels in the figure, not ${expect.instances}`);
+    return console.log(diff(src, out));
   }
   console.log(`ok   ${name}`);
 }
@@ -113,6 +119,36 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
   const src = readFileSync(`${process.env.SERQ_DIR}/examples/pd-disaggregation/vllm_nixl_push.sq`, "utf8");
   const o = ol(src);
   check("push: push → pull", src, toggle(src, o, o.relations[0]), { text: ["kvt.nixl_pull (P, D"] });
+  // P and D are one queue each, with a NIC, in no instance: P made one, and D with it (the copy joins two families)
+  check("push: P an instance, and D", src, instance(src, o, "P"), { stages: ["P", "P.nic", "D", "D.nic"], text: ["queue P[1] : prefill", "queue D[1] : decode", "fork { P[k].prefill (prompt); }", "from P[k];", "D[m].decode"], instances: 2 });
+}
+
+// a memory pool declared, with the capacity it is sized by; a second KV pool on one device is refused
+{
+  const l = example("llmd_nixl_pull");
+  check("llmd: P's pool of waitq slots", l, declarePool(l, ol(l), "P", "waitq", "slots", "8"), { stages: ["P"], text: ["waitq cap 8;", "pool waitq on P { queue fifo; }"] });
+  check("llmd: a second KV pool on P's device", l, declarePool(l, ol(l), "P", "kv2", "blocks", "1000"), { refused: /both on/ });
+  check("llmd: a pool P has", l, declarePool(l, ol(l), "P", "kv", "blocks", "1000"), { refused: /already/ });
+  const v = example("vllm");
+  const e = connect(v, ol(v), { kind: "arrival" }, { kind: "draft", draft: queueDraft(v, "decode", "D") });
+  if (typeof e !== "string") {
+    const s = apply(v, e);
+    check("palette: D's pool of waitq slots", s, declarePool(s, ol(s), "D", "waitq", "slots", "4"), { stages: ["D"], text: ["waitq cap 4;"] });
+  }
+}
+
+// an instance refused: one already, no queue, a queue with no NIC
+{
+  const l = example("llmd_nixl_pull");
+  check("llmd: D is an instance already", l, instance(l, ol(l), "D"), { refused: /already/ });
+  const v = example("vllm");
+  check("vllm: the engine is no queue", v, instance(v, ol(v), "vllm"), { refused: /no queue/ });
+  let src = v;
+  const e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: queueDraft(src, "prefill", "P") });
+  if (typeof e !== "string") {
+    src = apply(src, e);
+    check("palette: P without a NIC", src, instance(src, ol(src), "P"), { refused: /no NIC/ });
+  }
 }
 
 // built up from nothing but the palette: a prefiller, a decoder after it, the copy between them

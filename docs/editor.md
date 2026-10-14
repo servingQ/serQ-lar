@@ -54,7 +54,18 @@ See [upstream.md](upstream.md), U10.
    (`data-node`, `data-from`, `data-to`, `data-copy`), the kinds off the IR,
    the layout is serQ's with its columns and rows kept and tightened
    (`flow/graph.ts`). Each node has an input on its left and an output on
-   its right; the arrival only an output, the exit only an input. A
+   its right; the arrival only an output, the exit only an input. An
+   instance serQ draws as a panel (`prefill instance P[i]`: the engine,
+   its NIC) is a box here, with serQ's words over it, that holds its
+   members: dragged, it moves them; a member dragged stays inside it, and
+   it fits itself around them. The arrows are routed by libavoid
+   (`flow/route.ts`): orthogonal, around every node and clear of each
+   panel's words, and arrows that would share a stretch are nudged apart,
+   so no arrow runs through a node or on top of another, after a drag as
+   well. Each station lists its memory pools, from the IR: request slots
+   (orange) and KV blocks (blue), with their capacity; a pool no hold
+   takes yet, which serQ's figure does not draw, is dashed. An engine or a
+   NIC chosen has a toolbar: Make instance, + NIC, + Memory pool (7). A
    connection between two handles is an arrow below; a node dragged keeps
    its place in this browser (a layout, not the program); Delete removes a
    station; "serQ's layout" puts every node back.
@@ -66,9 +77,24 @@ See [upstream.md](upstream.md), U10.
    source.
 6. **Inspector** (click a station or a copy). Instances −/+ (the family's
    `let`), pull ⇄ push (a push dispatches the source's call with `fork`,
-   which serQ requires), + NIC, + Memory pool (request slots or KV blocks in the queue), Duplicate (a draft copy, with the
-   relations it reads by), Remove (the queue, its calls and its copies;
-   serQ names whatever else still refers to it).
+   which serQ requires), + NIC, Make instance and + Memory pool (7),
+   Duplicate (a draft copy, with the relations it reads by), Remove (the
+   queue, its calls and its copies; serQ names whatever else still refers
+   to it).
+7. **Instances and pools** (the Edit view's toolbar, or the inspector).
+   An instance is not declared in serQ: it is the panel serQ draws around
+   the engine, NIC and pools one `choose` variable indexes. Make instance
+   writes that: the queue a family of one (`queue P[1]`), each call
+   choosing its member (`choose k in 1 by (work(P[k])); P[k].prefill
+   (…);`), a call reading the KV `from P` reading it `from P[k]`. serQ
+   copies KV between two families or two queues, not one of each, so the
+   queue at the copy's other end becomes an instance too, by a variable of
+   its own. A queue with no NIC is sent to + NIC first: serQ refuses a NIC
+   that carries no copy. + Memory pool declares a pool and the capacity
+   serQ sizes it by (`waitq cap 8;` in the engine and `pool waitq on P {
+   queue fifo; }`, or `kv cap N;` in the device and `pool kv on gpu { … }`);
+   KV blocks only where the device has none, since serQ takes one KV pool
+   a device.
 
 `scripts/check-edits.sh` runs every edit on serQ's examples and asks serQ
 to link and draw the result.
