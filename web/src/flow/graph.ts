@@ -8,6 +8,7 @@
 // words on it are serQ's too, as its figure writes them (`wordsOf`).
 
 import { points } from "../anchors";
+import { family } from "../events";
 import type { Draft } from "../edit";
 
 export type NodeKind = "source" | "sink" | "engine" | "nic" | "station" | "delay" | "decision" | "draft";
@@ -40,6 +41,8 @@ export interface GraphPool {
   cap: string;
   /** Whether serQ's figure draws it: a pool no hold takes is declared, not drawn. */
   drawn: boolean;
+  /** Its drum's name in the figure: `P.kv`, or a stacked member's `P.kv[1]`. */
+  drum: string;
   /** serQ's words beside its drum (`pool P.kv on P's device`, `cap 160000 ·
    * block 16 · evict lru · preempt lifo`), and whether it draws a prefix cache. */
   words?: string[];
@@ -112,9 +115,11 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrP
       nodes.push({ id, kind: "decision", label: label(g) ?? "decide", sub: "", x: b.x + b.width / 2, y: b.y + b.height / 2 });
       continue;
     }
-    const k = kinds.get(stage);
-    const members = k && k.count > 1 ? ` · ×${k.count}` : "";
-    const kind: NodeKind = k?.kind === "Step" ? "engine" : stage.endsWith(".nic") ? "nic" : k?.kind === "Delay" ? "delay" : "station";
+    // a stacked instance's member (`P[1]`) is drawn apart, of its array's kind
+    const array = family(stage);
+    const k = kinds.get(array);
+    const members = k && k.count > 1 && array === stage ? ` · ×${k.count}` : "";
+    const kind: NodeKind = k?.kind === "Step" ? "engine" : array.endsWith(".nic") ? "nic" : k?.kind === "Delay" ? "delay" : "station";
     const what = k?.kind === "Step" ? "engine" : (k?.kind ?? "").toLowerCase();
     nodes.push({ id, kind, label: stage, sub: (kind === "nic" ? `nic · ${what}` : what) + members, x: b.x + b.width / 2, y: b.y + b.height / 2 });
   }
@@ -159,26 +164,47 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrP
 }
 
 /** Each pool of the IR on the node that holds it: a queue's (`P.kv`) on
- * the queue's station; one named by no queue, on the station serQ draws its
- * drum nearest, if it draws one. A family's pool is one pool. */
+ * the queue's station, on each member's in a stacked instance (`P[1]`'s
+ * `P.kv[1]`); one named by no queue, on the station serQ draws its drum
+ * nearest, if it draws one. A family's pool is one pool. */
 function poolsOf(svg: SVGSVGElement, pools: IrPool[], nodes: GraphNode[]) {
   const stations = nodes.filter((n) => n.kind !== "decision");
+  const drums = [...svg.querySelectorAll<SVGGElement>('g[data-pool][data-role="drum"]')];
+  const drumOf = (name: string) => drums.find((g) => g.dataset.pool === name);
   const seen = new Set<string>();
   for (const p of pools) {
     if (seen.has(p.name)) continue;
     seen.add(p.name);
-    const drum = svg.querySelector<SVGGElement>(`g[data-pool="${CSS.escape(p.name)}"][data-role="drum"]`);
+    const drum = drums.find((g) => family(g.dataset.pool!) === p.name);
     const dot = p.name.lastIndexOf(".");
-    let owner = dot > 0 ? stations.find((n) => n.id === p.name.slice(0, dot)) : undefined;
-    if (!owner && drum) {
+    let owners = dot > 0 ? stations.filter((n) => n.kind !== "draft" && family(n.id) === p.name.slice(0, dot)) : [];
+    if (!owners.length && drum) {
       const b = drum.getBBox();
       const c = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
-      owner = stations.reduce<GraphNode | undefined>((a, n) => (!a || Math.hypot(n.x - c.x, n.y - c.y) < Math.hypot(a.x - c.x, a.y - c.y) ? n : a), undefined);
+      const near = stations.reduce<GraphNode | undefined>((a, n) => (!a || Math.hypot(n.x - c.x, n.y - c.y) < Math.hypot(a.x - c.x, a.y - c.y) ? n : a), undefined);
+      owners = near ? [near] : [];
     }
-    if (!owner) continue;
     const cap = typeof p.cap === "number" ? (p.cap >= 1e4 ? `${Math.round(p.cap / 1000)}k` : String(p.cap)) : p.cap;
-    (owner.pools ??= []).push({ id: p.name, name: dot > 0 ? p.name.slice(dot + 1) : p.name, kind: p.block !== null ? "blocks" : "slots", cap, drawn: drum !== null });
+    for (const owner of owners) {
+      // a member's own drum (`P.kv[1]` for `P[1]`), else the array's
+      const member = /\[\d+\]$/.exec(owner.id)?.[0];
+      const name = member && drumOf(p.name + member) ? p.name + member : (drum?.dataset.pool ?? p.name);
+      (owner.pools ??= []).push({ id: p.name, name: dot > 0 ? p.name.slice(dot + 1) : p.name, kind: p.block !== null ? "blocks" : "slots", cap, drawn: drum !== undefined, drum: name });
+    }
   }
+}
+
+/** A queue's NIC by the name the figure gives it: `P.nic`, or a stacked
+ * member's `P.nic[1]` for `P[1]`. */
+export function nicOf(id: string): string {
+  const m = /^(.*?)(\[\d+\])?$/.exec(id)!;
+  return `${m[1]}.nic${m[2] ?? ""}`;
+}
+
+/** The queue a NIC is of, by the figure's names: `P` for `P.nic`, `P[1]` for `P.nic[1]`. */
+function queueOfNic(id: string): string | undefined {
+  const m = /^(.*)\.nic(\[\d+\])?$/.exec(id);
+  return m ? m[1] + (m[2] ?? "") : undefined;
 }
 
 /** The panels serQ draws for its instances (`rect.instance`), with the nodes
@@ -194,7 +220,8 @@ function instancesOf(svg: SVGSVGElement, nodes: GraphNode[]): GraphInstance[] {
   const panels = [...svg.querySelectorAll<SVGRectElement>("rect.instance")].map((r) => r.getBBox());
   const inside = (b: DOMRect, n: GraphNode) => n.x > b.x && n.x < b.x + b.width && n.y > b.y && n.y < b.y + b.height;
   const panelOf = (n: GraphNode): DOMRect | undefined => {
-    const queue = n.kind === "nic" ? nodes.find((q) => q.id === n.id.slice(0, -4)) : undefined;
+    const of = n.kind === "nic" ? queueOfNic(n.id) : undefined;
+    const queue = of ? nodes.find((q) => q.id === of) : undefined;
     return queue ? panels.find((b) => inside(b, queue)) ?? panels.find((b) => inside(b, n)) : panels.find((b) => inside(b, n));
   };
   const out: GraphInstance[] = [];
@@ -255,7 +282,7 @@ function wordsOf(svg: SVGSVGElement, nodes: GraphNode[], edges: GraphEdge[]) {
   const caches = [...svg.querySelectorAll<SVGRectElement>("rect.cached")].map((r) => r.getBBox());
   for (const n of nodes)
     for (const p of n.pools ?? []) {
-      const drum = svg.querySelector<SVGGElement>(`g[data-pool="${CSS.escape(p.id)}"][data-role="drum"]`);
+      const drum = svg.querySelector<SVGGElement>(`g[data-pool="${CSS.escape(p.drum)}"][data-role="drum"]`);
       if (!drum) continue;
       const b = drum.getBBox();
       const lines: Words[] = [];

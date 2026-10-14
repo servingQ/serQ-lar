@@ -61,7 +61,8 @@ An arrow from the arrival or a station to a draft writes the queue and
 its call into the program. Its nodes are serQ's stations
 and arrows, where serQ placed them, each with an input on its left and an
 output on its right; an instance serQ draws as a panel (an engine with its
-NIC) is a box holding its members, dragged as one; each station lists its
+NIC) is a box holding its members, dragged as one, one per member of the
+pool the router chooses from (`P[0]`, `P[1]` for `NP = 2`); each station lists its
 memory pools (a declared pool no hold takes yet, dashed); a chosen engine
 has Prefill ⇄ Decode and Make instance (its queue a family its calls
 choose a member of) on a toolbar, a chosen KV copy pull ⇄ push (serQ

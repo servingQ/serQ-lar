@@ -40,7 +40,8 @@ function check(name: string, src: string, edits: Edit[] | string, expect: { stag
     return console.log(diff(src, out));
   }
   for (const s of expect.stages ?? []) {
-    if (!svg.includes(`data-stage="${s}"`)) {
+    // a stacked instance's station is named by its member: `P[0]` is `P`'s first
+    if (!svg.includes(`data-stage="${s}"`) && !svg.includes(`data-stage="${s}[0]"`)) {
       failed++;
       console.log(`FAIL ${name}: no station ${s} in the figure`);
       return console.log(diff(src, out));
