@@ -4,7 +4,7 @@
 // engine clicked takes a role, a KV copy clicked a mode. Every change is an
 // edit of the text (edit.ts), which serQ then draws again.
 
-import { apply as _apply, connect, copy, declarePool, fresh, instance, remove, retype, toggle, type Draft, type Edit, type From, type To } from "./edit";
+import { apply as _apply, connect, copy, declarePool, engineRole, fresh, instance, remove, retype, toggle, type Draft, type Edit, type From, type To } from "./edit";
 import { outputParam, type Outline } from "./outline";
 import * as snip from "./snippets";
 import type { Role } from "./snippets";
@@ -27,30 +27,19 @@ export class Compose {
   // ------------------------------------------------------------ palette ----
 
   /** A draft of `kind`, beside the deployment until an arrow reaches it: an
-   * engine starts a decoder (a whole engine: it prefills locally), and
-   * takes the other role clicked. */
+   * engine starts an aggregated one (it prefills and decodes), and takes
+   * another role clicked. */
   add(kind: "engine" | "delay"): Draft {
-    const name = this.freshName(kind === "engine" ? "D" : "hop");
-    const d: Draft = kind === "delay" ? { kind: "stage", name, text: snip.delay(name) } : { kind: "queue", name, role: "decode", family: null, text: snip.decode(name, undefined, this.output()), relations: [] };
+    const name = this.freshName(kind === "engine" ? STEM.agg : "hop");
+    const d: Draft = kind === "delay" ? { kind: "stage", name, text: snip.delay(name) } : { kind: "queue", name, role: "agg", family: null, text: snip.agg(name, undefined, this.output()), relations: [] };
     this.drafts.push(d);
     this.onDrafts();
     return d;
   }
 
-  /** What a decode draft generates: the server's hidden parameter. */
+  /** What an aggregated draft generates: the server's hidden parameter. */
   private output(): string | undefined {
     return outputParam(this.host.outline()) ?? undefined;
-  }
-
-  /** A pool of `count` engines, a family (`queue D[3]`): a draft like an
-   * engine; its call chooses a member (`choose k in 3 by (work(D[k]))`). */
-  addPool(count: number): Draft {
-    const name = this.freshName("D");
-    const n = Math.max(1, Math.round(count));
-    const d: Draft = { kind: "queue", name, role: "decode", family: String(n), text: snip.decode(name, n, this.output()), relations: [] };
-    this.drafts.push(d);
-    this.onDrafts();
-    return d;
   }
 
   private freshName(stem: string): string {
@@ -162,20 +151,21 @@ export class Compose {
 
   // ------------------------------------------------------------ roles ----
 
-  /** The role a station's queue or a draft engine plays, if it is a prefiller or a decoder. */
+  /** The engine role a station's queue or a draft engine plays (agg, prefill or decode), if any. */
   roleOf(at: string | Draft): Role | null {
-    const role = typeof at === "string" ? this.host.outline()?.queues.find((q) => q.name === queueName(at))?.roles.join(" ") : at.kind === "queue" ? at.role : "";
-    const m = role?.match(/\b(prefill|decode)\b/);
-    return m ? (m[1] as Role) : null;
+    if (typeof at !== "string") return at.kind === "queue" ? (at.role as Role) : null;
+    const q = this.host.outline()?.queues.find((q) => q.name === queueName(at));
+    return q ? engineRole(q) : null;
   }
 
-  /** Make a station's queue, or a draft engine, a prefiller or a decoder (edit.ts `retype`). */
+  /** Make a station's queue, or a draft engine, an aggregated engine, a prefiller or a decoder (edit.ts `retype`). */
   setRole(at: string | Draft, role: Role) {
     if (typeof at !== "string") {
       if (at.kind !== "queue" || at.role === role) return;
+      if (role === "decode") return this.host.say("A decoder reads the KV a prefiller leased: place this engine, then drag a KV copy to it from a prefiller.", true);
       // not written yet: named after its role, as the palette names one
       const i = this.drafts.indexOf(at);
-      const name = this.freshName(role === "prefill" ? "P" : "D");
+      const name = this.freshName(STEM[role]);
       this.drafts[i] = { ...at, name, role, text: snip.engine(role, name, at.family === null ? undefined : Number(at.family), this.output()) };
       // where it was dropped, under its new name
       this.onRename(at.name, name);
@@ -188,7 +178,11 @@ export class Compose {
     if (typeof edits === "string") return this.host.say(edits, true);
     if (!edits.length) return;
     this.host.apply(edits);
-    this.host.say(`${q} is now a ${role === "prefill" ? "prefiller" : "decoder"}: its role, scheduler, entry and calls rewritten. Ctrl+Z undoes it.`);
+    this.host.say(
+      role === "decode"
+        ? `${q} is now a decoder: it reads its KV from the prefiller, copied over NIXL. Ctrl+Z undoes it.`
+        : `${q} is now ${role === "prefill" ? "a prefiller" : "an aggregated engine"}: its role, scheduler, entry and calls rewritten. Ctrl+Z undoes it.`,
+    );
   }
 
   /** Make the KV copy between two stations' queues a pull or a push (edit.ts `toggle`). */
@@ -203,6 +197,9 @@ export class Compose {
     this.host.say(`The copy ${r.source} → ${r.reader} is now a ${mode === "push" ? "push: the source posts each write" : "pull: the reader starts each read"}. Ctrl+Z undoes it.`);
   }
 }
+
+/** What an engine of a role is named after: `E` as serQ's aggregated replicas, `P` and `D` as its P/D queues. */
+const STEM: Record<Role, string> = { agg: "E", prefill: "P", decode: "D" };
 
 /** The queue a station is: `P` for `P`, `P.nic` and `P[1]`. */
 const queueName = (stage: string) => stage.replace(/\.nic$/, "").replace(/\[.*\]$/, "");

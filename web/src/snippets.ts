@@ -8,13 +8,18 @@
  * and pools, a call choosing one. */
 const head = (name: string, count?: number) => (count === undefined ? name : `${name}[${count}]`);
 
-/** An engine's role: a prefiller computes the prompt and leases the KV for
- * a reader; a decoder prefills locally and decodes the request's hidden
- * `output` tokens (the server's hidden parameter, `o` where it has none). */
-export type Role = "prefill" | "decode";
+/** An engine's role, serQ's: an aggregated engine (`agg`) prefills and
+ * decodes the request's hidden `output` tokens (the server's hidden
+ * parameter, `o` where it has none); a prefiller computes the prompt and
+ * leases the KV for a reader; a decoder decodes with the KV a prefiller
+ * leased, which a KV copy into it writes (edit.ts `copy`). */
+export type Role = "agg" | "prefill" | "decode";
 
-/** A queue that prefills or decodes: device, engine, its request slots and KV, and its role's entry. */
-export function engine(role: Role, name: string, count?: number, output = "o"): string {
+/** The roles an engine is written with on its own, before any KV copy. */
+export type Own = Exclude<Role, "decode">;
+
+/** A queue that prefills, or prefills and decodes: device, engine, its request slots and KV, and its role's entry. */
+export function engine(role: Own, name: string, count?: number, output = "o"): string {
   return `queue ${head(name, count)} : ${role} {
   device gpu { compute (t) = t * 2e-5; hbm (k) = 2e-4 + 2e-9 * k; kv cap 160000; }
   engine on gpu {
@@ -30,10 +35,10 @@ ${indent(entry(role, name, output), "  ")}
 }
 
 export const prefill = (name: string, count?: number) => engine("prefill", name, count);
-export const decode = (name: string, count?: number, output = "o") => engine("decode", name, count, output);
+export const agg = (name: string, count?: number, output = "o") => engine("agg", name, count, output);
 
-/** A role's scheduler: a decoder takes its slots and KV as it admits; a prefiller's entry holds them. */
-export function scheduler(role: Role): string {
+/** A role's scheduler: an aggregated engine takes its slots and KV as it admits; a prefiller's entry holds them. */
+export function scheduler(role: Own): string {
   return role === "prefill"
     ? "scheduler { advance running; admit waiting while (running.preempted == 0); }"
     : `scheduler {
@@ -42,8 +47,8 @@ export function scheduler(role: Role): string {
 }`;
 }
 
-/** A role's entry in queue `name`; a decoder's generates `output` tokens. */
-export function entry(role: Role, name: string, output = "o"): string {
+/** A role's entry in queue `name`; an aggregated engine's generates `output` tokens. */
+export function entry(role: Own, name: string, output = "o"): string {
   return role === "prefill"
     ? `prefill (prompt) {
   hold reqs (cost(reqs, 1)), kv (cost(kv, prompt)) {
