@@ -87,6 +87,9 @@ header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; paddi
 header h1 { font-size: 18px; margin: 0; }
 header .sub { color: var(--dim); }
 header #version { margin-left: auto; font-size: 12px; }
+header #version:hover, header .repo:hover { color: var(--ink); }
+header #version { text-decoration: none; }
+header .repo { align-self: center; display: inline-flex; color: var(--dim); }
 main { display: grid; grid-template-columns: minmax(280px, 400px) 1fr; gap: 16px; padding: 16px; }
 @media (max-width: 860px) {
   main { grid-template-columns: 1fr; }
