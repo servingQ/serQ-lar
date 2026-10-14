@@ -395,9 +395,9 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
       colorMode="system"
       minZoom={0.1}
       maxZoom={4}
-      proOptions={{ hideAttribution: false }}
+      proOptions={{ hideAttribution: true }}
     >
-      <Background gap={16} />
+      <Background gap={32} size={1} />
       <Controls />
       <MiniMap pannable zoomable />
       <Panel position="top-right">
