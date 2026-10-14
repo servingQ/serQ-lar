@@ -118,3 +118,13 @@ pub fn tokens(src: &str) -> String {
         .collect();
     serde_json::Value::Array(pieces).to_string()
 }
+
+/// Where each declaration, relation and entry call is written in the text,
+/// as JSON (`serq::outline`): what the page changes when the figure is
+/// edited. Parse only, so text that does not link still has one.
+#[wasm_bindgen]
+pub fn outline(src: &str) -> Result<String, JsError> {
+    serq::outline(src)
+        .map(|o| o.to_json())
+        .map_err(|e| JsError::new(&e))
+}

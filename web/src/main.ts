@@ -1,11 +1,15 @@
 import "./style.css";
 import { anchors } from "./anchors";
+import { Camera } from "./camera";
+import { Compose } from "./compose";
 import { Dashboard, withGauges } from "./dashboard";
-import { Player } from "./player";
+import { Editor } from "./editor";
 import type { Log } from "./events";
-import { esc, render, type Report, type Selection } from "./report";
+import { outline as readOutline, type Outline } from "./outline";
+import { Player } from "./player";
+import { render, type Report, type Selection } from "./report";
+import { Serq } from "./serq";
 import type { Ir, Report as RunReport } from "./series";
-import type { Request, Response } from "./worker";
 
 const programs = import.meta.glob<string>("./examples/*.sq", { query: "?raw", import: "default", eager: true });
 const names = Object.keys(programs)
@@ -14,14 +18,17 @@ const names = Object.keys(programs)
 
 /** The most log events a run keeps: past it the replay stops early and says so. */
 const LOG_CAP = 400_000;
+/** After an edit: how long typing pauses before serQ draws, and before it runs. */
+const DRAW_AFTER = 120;
+const RUN_AFTER = 700;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const select = $<HTMLSelectElement>("program");
-const source = $<HTMLTextAreaElement>("source");
-const lit = $<HTMLPreElement>("lit");
 const view = $<HTMLDivElement>("view");
 const canvas = $<HTMLCanvasElement>("overlay");
 const tip = $<HTMLDivElement>("tip");
+const diag = $<HTMLPreElement>("diag");
+const zoomLevel = $<HTMLSpanElement>("zoom-level");
 const status = $<HTMLSpanElement>("status");
 const play = $<HTMLButtonElement>("play");
 const step = $<HTMLButtonElement>("step");
@@ -34,6 +41,8 @@ const clock = $<HTMLSpanElement>("clock");
 const counts = $<HTMLSpanElement>("counts");
 const banner = $<HTMLDivElement>("banner");
 const report = $<HTMLDivElement>("report");
+const say = $<HTMLSpanElement>("say");
+const metrics = document.querySelector<HTMLElement>("section.metrics")!;
 const dashboard = new Dashboard({
   tiles: $("tiles"),
   panels: $("panels"),
@@ -44,112 +53,131 @@ const dashboard = new Dashboard({
   note: $("metrics-note"),
 });
 
+const editor = new Editor($<HTMLDivElement>("source"), () => {
+  clearTimeout(drawTimer);
+  drawTimer = window.setTimeout(() => redraw(), DRAW_AFTER);
+});
+let drawTimer = 0;
+
 // ------------------------------------------------------------ serQ ----
 
-const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
-let seq = 0;
-const pending = new Map<number, (r: Response) => void>();
-worker.onmessage = (m: MessageEvent<Response>) => {
-  pending.get(m.data.id)?.(m.data);
-  pending.delete(m.data.id);
-};
-type Ask = Request extends infer R ? (R extends unknown ? Omit<R, "id"> : never) : never;
-function serq(q: Ask): Promise<Response> {
-  const id = ++seq;
-  return new Promise((resolve) => {
-    pending.set(id, resolve);
-    worker.postMessage({ ...q, id });
-  });
-}
-
-// ------------------------------------------------------------ source ----
-
-/** serQ's roles left uncoloured: a program's own names, white space, and
- * what follows a lexical error (a string not closed yet). */
-const PLAIN = new Set(["name", "space", "unlexed"]);
-
-/** Show the program under the textarea: plain at once, so the text never
- * lags what is typed, then in serQ's roles when the worker has cut them
- * (behind a run, if one is going). A pre drops a last newline; a space
- * keeps the line the caret is on. */
-function highlight() {
-  const src = source.value;
-  lit.textContent = src + " ";
-  serq({ cmd: "tokens", src }).then((r) => {
-    if (!r.ok || source.value !== src) return;
-    const toks = JSON.parse(r.value) as [string, string][];
-    lit.innerHTML = toks.map(([role, s]) => (PLAIN.has(role) ? esc(s) : `<span class="${role}">${esc(s)}</span>`)).join("") + " ";
-    syncScroll();
-  });
-}
-function syncScroll() {
-  lit.scrollTop = source.scrollTop;
-  lit.scrollLeft = source.scrollLeft;
-}
-let typed = 0;
-source.addEventListener("input", () => {
-  lit.textContent = source.value + " ";
-  syncScroll();
-  clearTimeout(typed);
-  typed = window.setTimeout(highlight, 80);
-});
-source.addEventListener("scroll", syncScroll);
+/** Draws: answers each edit in milliseconds. */
+const drawer = new Serq();
+/** Runs: may take seconds, and is stopped when a newer edit wants the run. */
+const runner = new Serq();
 
 // ------------------------------------------------------------ view ----
 
+const camera = new Camera(view);
+camera.onChange = () => (zoomLevel.textContent = `${Math.round(camera.level * 100)}%`);
 let player: Player | null = null;
+/** Counts edits: an answer for an older one is dropped. */
 let generation = 0;
+/** What the figure on the page was drawn from, and the run replayed over it. */
+let drawnFrom: { svg: string; ir: string } | null = null;
+let ranFor: string | null = null;
+/** The status's word on that run. */
+let ranNote = "";
 /** The report of the last run, and the component the viewer chose to read it for. */
 let last: Report | null = null;
 let selected: Selection = null;
+let runTimer = 0;
 
+/** serQ refused the text: the last figure stays, dimmed, under serQ's words. */
 function fail(message: string) {
   status.textContent = "error";
-  view.querySelector("svg")?.remove();
-  player?.stop();
-  player = null;
-  banner.textContent = "";
-  last = null;
-  report.innerHTML = `<pre class="err">${esc(message)}</pre>`;
-  dashboard.clear();
+  view.classList.add("stale");
+  report.classList.add("stale");
+  metrics.classList.add("stale");
+  if (player) player.playing = false;
+  play.textContent = "Play";
+  diag.textContent = message;
+  diag.hidden = false;
+  editor.diagnose(message);
 }
 
-/** Draw the program, run it with the log, and replay the log over the figure. */
-async function drawAndRun() {
+/** Draw the text as it is now; when it means something new, run it after a pause. */
+async function redraw(runNow = false) {
   const gen = ++generation;
-  const src = source.value;
-  status.textContent = "drawing…";
-  player?.stop();
-  player = null;
-  const [drawn, irJson] = await Promise.all([serq({ cmd: "draw", src }), serq({ cmd: "ir", src })]);
+  const src = editor.text;
+  const [drawn, irJson, outlined, cut] = await Promise.all([
+    drawer.ask({ cmd: "draw", src }),
+    drawer.ask({ cmd: "ir", src }),
+    drawer.ask({ cmd: "outline", src }),
+    drawer.ask({ cmd: "tokens", src }),
+  ]);
   if (gen !== generation) return;
+  // serQ's roles colour the text, whether or not it links
+  if (cut.ok) editor.colour(JSON.parse(cut.value));
+  // the outline needs the text to parse, not to link: an edit can follow a link error
+  currentOutline = outlined.ok ? readOutline(outlined.value, src) : null;
+  compose.refresh();
   if (!drawn.ok) return fail(drawn.error);
   if (!irJson.ok) return fail(irJson.error);
-  view.querySelector("svg")?.remove();
-  view.insertAdjacentHTML("afterbegin", drawn.value);
-  const svg = view.querySelector("svg")!;
-  svg.removeAttribute("width");
-  svg.removeAttribute("height");
-  const at = anchors(svg);
-  const ir = JSON.parse(irJson.value) as Ir;
-  const poolStage = poolStages(ir);
-  status.textContent = `drawn in ${drawn.ms.toFixed(1)} ms · ${at.stations.size} station(s) · running…`;
-  banner.textContent = "";
+  diag.hidden = true;
+  editor.diagnose(null);
+  // a run is for the IR, the horizon and the seed; a comment or a space changes none
+  const key = `${irJson.value}\u0000${horizon.value}\u0000${seed.value}`;
+  view.classList.remove("stale");
+  const same = drawnFrom !== null && drawnFrom.svg === drawn.value && drawnFrom.ir === irJson.value;
+  if (!same) {
+    drawnFrom = { svg: drawn.value, ir: irJson.value };
+    view.querySelector("svg")?.remove();
+    view.insertAdjacentHTML("afterbegin", drawn.value);
+    const svg = view.querySelector("svg")!;
+    svg.removeAttribute("width");
+    svg.removeAttribute("height");
+    const vb = svg.viewBox.baseVal;
+    camera.figure(vb.width, vb.height);
+    player?.stop();
+    player = null;
+    ranFor = null;
+    markSelected();
+  }
+  status.textContent = `drawn in ${drawn.ms.toFixed(1)} ms` + (key === ranFor ? ranNote : "");
+  if (key === ranFor) {
+    view.classList.remove("stale");
+    report.classList.remove("stale");
+    metrics.classList.remove("stale");
+    return;
+  }
+  report.classList.add("stale");
+  metrics.classList.add("stale");
+  clearTimeout(runTimer);
+  runTimer = window.setTimeout(() => runIt(gen, key), runNow ? 0 : RUN_AFTER);
+}
+
+/** Run the text drawn at `gen` with the log, and replay the log over the figure. */
+async function runIt(gen: number, key: string) {
+  if (gen !== generation) return;
+  const src = editor.text;
   const H = Number(horizon.value);
-  const ran = await serq({ cmd: "run", src, horizon: H, seed: Number(seed.value) || 1, log: LOG_CAP });
+  const S = Number(seed.value) || 1;
+  // a run still going is for older text: stop it rather than wait for it
+  if (runner.busy) runner.kill();
+  status.textContent += " · running…";
+  const ran = await runner.ask({ cmd: "run", src, horizon: H, seed: S, log: LOG_CAP });
   if (gen !== generation) return;
   if (!ran.ok) return fail(ran.error);
+  const svg = view.querySelector("svg");
+  if (!svg || !drawnFrom) return;
   const j = JSON.parse(ran.value) as Report & { log: Log };
   const log = j.log;
+  ranFor = key;
   last = j;
+  dashboard.show(j as unknown as RunReport, JSON.parse(drawnFrom.ir) as Ir, H);
+  report.classList.remove("stale");
+  metrics.classList.remove("stale");
   showReport();
-  dashboard.show(j as unknown as RunReport, ir, H);
-  status.textContent = `drawn in ${drawn.ms.toFixed(1)} ms · ran ${H} s of simulated time in ${ran.ms.toFixed(0)} ms`;
+  const at = anchors(svg);
+  ranNote = ` · ran ${H} s of simulated time in ${ran.ms.toFixed(0)} ms`;
+  status.textContent = status.textContent.replace(" · running…", "") + ranNote;
   const n = log.events.length.toLocaleString("en");
-  banner.innerHTML = `Replaying serQ's log of this run: <b>${n}</b> events over ${H} s, seed ${Number(seed.value) || 1}.` +
+  banner.innerHTML = `Replaying serQ's log of this run: <b>${n}</b> events over ${H} s, seed ${S}.` +
     (log.truncated ? ` The log stopped at the cap of ${LOG_CAP.toLocaleString("en")} events; the run went on.` : "") +
     (at.stations.size === 0 ? " No station in this figure: nothing to place the sessions on." : "");
-  player = new Player(log, at, poolStage, canvas, H);
+  player?.stop();
+  player = new Player(log, at, poolStages(JSON.parse(drawnFrom.ir)), canvas, H, camera);
   scrub.max = String(H);
   scrub.value = "0";
   player.speed = Number(speed.value);
@@ -189,6 +217,10 @@ function tick(t: number) {
 /** The report under the figure: all of it, or the chosen component's part, with that component lit in the figure. */
 function showReport() {
   report.innerHTML = last ? render(last, selected) : "";
+  markSelected();
+}
+
+function markSelected() {
   for (const g of view.querySelectorAll<SVGGElement>("svg g[data-stage], svg g[data-pool]")) {
     const kind = g.dataset.stage !== undefined ? "stage" : "pool";
     const name = kind === "stage" ? g.dataset.stage : g.dataset.pool;
@@ -209,26 +241,16 @@ report.addEventListener("click", (e) => {
   choose(kind === "stage" || kind === "pool" ? { kind, name: chip.dataset.name ?? "" } : null);
 });
 
-// ------------------------------------------------------------ tooltip ----
+// ------------------------------------------------------------ the diagnostic ----
 
-/** The figure point under a mouse event. */
-function figurePoint(e: MouseEvent): { x: number; y: number } | null {
-  if (!player) return null;
-  const r = canvas.getBoundingClientRect();
-  const svg = view.querySelector("svg");
-  if (!svg) return null;
-  const k = svg.viewBox.baseVal.width / r.width;
-  return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
-}
+/** serQ's diagnostic starts `LINE:COL:`; clicking it puts the caret there. */
+diag.addEventListener("click", () => editor.goTo(diag.textContent ?? ""));
 
-function showTip(e: MouseEvent) {
-  const p = figurePoint(e);
-  const hit = p && player ? player.hit(p.x, p.y) : null;
-  if (!hit && player?.pinned) {
-    // the pinned session's tooltip stays
-    tip.hidden = true;
-    return;
-  }
+// ------------------------------------------------------------ pointer ----
+
+function showTip(e: PointerEvent) {
+  const p = camera.toFigure(e.clientX, e.clientY);
+  const hit = player ? player.hit(p.x, p.y) : null;
   if (!hit) {
     tip.hidden = true;
     return;
@@ -243,38 +265,145 @@ function showTip(e: MouseEvent) {
   tip.style.top = `${Math.min(e.clientY - r.top + 12, r.height - tip.offsetHeight - 4)}px`;
 }
 
-view.addEventListener("mousemove", showTip);
-view.addEventListener("mouseleave", () => (tip.hidden = true));
-view.addEventListener("click", (e) => {
-  const p = figurePoint(e);
-  const hit = p && player ? player.hit(p.x, p.y) : null;
+/** A click on the figure: a session pins, a station or a drum chooses its component in the report. */
+function click(e: PointerEvent) {
+  const p = camera.toFigure(e.clientX, e.clientY);
+  const hit = player ? player.hit(p.x, p.y) : null;
   if (player) player.pinned = hit && player.pinned !== hit.mover.key ? hit.mover.key : null;
   if (hit) return;
-  // no session under the pointer: a station or a drum chooses its component in the report
-  const g = (e.target as Element).closest<SVGGElement>("g[data-stage], g[data-pool]");
+  // the press captured the pointer, so the event's target is the view: ask what is under it
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  // a KV copy (serQ marks its arrow and bracket `data-copy`): its poster's queue, whose inspector turns pull into push
+  const copied = under?.closest<SVGElement>("[data-copy]");
+  if (copied) return compose.choose(copied.dataset.poster ?? null);
+  const g = under?.closest<SVGGElement>("g[data-stage], g[data-pool]");
+  compose.choose(g?.dataset.stage ?? null);
   if (!g) return;
   choose(g.dataset.stage !== undefined ? { kind: "stage", name: g.dataset.stage } : { kind: "pool", name: g.dataset.pool ?? "" });
-  report.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// Drag pans, two fingers pinch, the wheel zooms about the pointer; a press
+// that does not move is a click.
+const down = new Map<number, { x: number; y: number }>();
+let moved = false;
+let pinch = 0;
+view.addEventListener("pointerdown", (e) => {
+  if ((e.target as Element).closest(".zoom, .diag")) return;
+  if (compose.down(e)) return;
+  down.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  view.setPointerCapture(e.pointerId);
+  moved = false;
+  if (down.size === 2) {
+    const [a, b] = [...down.values()];
+    pinch = Math.hypot(a.x - b.x, a.y - b.y);
+  }
 });
+view.addEventListener("pointermove", (e) => {
+  const was = down.get(e.pointerId);
+  if (!was) return showTip(e);
+  const dx = e.clientX - was.x;
+  const dy = e.clientY - was.y;
+  if (!moved && Math.hypot(dx, dy) < 4) return;
+  moved = true;
+  tip.hidden = true;
+  down.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (down.size === 2) {
+    const [a, b] = [...down.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    const r = view.getBoundingClientRect();
+    if (pinch > 0) camera.zoomAt((a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, d / pinch);
+    pinch = d;
+  } else camera.pan(dx, dy);
+});
+const lift = (e: PointerEvent) => {
+  if (!down.delete(e.pointerId)) return;
+  if (down.size < 2) pinch = 0;
+  if (!moved && down.size === 0 && e.type === "pointerup") click(e);
+};
+view.addEventListener("pointerup", lift);
+view.addEventListener("pointercancel", lift);
+view.addEventListener("pointerleave", () => (tip.hidden = true));
+view.addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    const r = view.getBoundingClientRect();
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    camera.zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-dy * 0.0015));
+  },
+  { passive: false },
+);
+view.addEventListener("dblclick", (e) => {
+  if (!(e.target as Element).closest(".zoom, .diag")) camera.fit();
+});
+$<HTMLButtonElement>("zoom-in").onclick = () => camera.zoom(1.25);
+$<HTMLButtonElement>("zoom-out").onclick = () => camera.zoom(0.8);
+$<HTMLButtonElement>("zoom-fit").onclick = () => camera.fit();
 
 // ------------------------------------------------------------ wiring ----
+
+// ------------------------------------------------------------ editing ----
+
+let currentOutline: Outline | null = null;
+let sayTimer = 0;
+const compose = new Compose(
+  {
+    text: () => editor.text,
+    outline: () => currentOutline,
+    apply: (edits) => editor.apply(edits),
+    reveal: (at) => {
+      editor.view.dispatch({ selection: { anchor: at[0], head: at[1] }, scrollIntoView: true });
+      editor.view.focus();
+    },
+    say: (m, bad) => {
+      say.textContent = m;
+      say.classList.toggle("bad", !!bad);
+      clearTimeout(sayTimer);
+      sayTimer = window.setTimeout(() => (say.textContent = ""), 9000);
+    },
+  },
+  view,
+  $<HTMLDivElement>("drafts"),
+  $<HTMLDivElement>("inspector"),
+);
+const toolMove = $<HTMLButtonElement>("tool-move");
+const toolLink = $<HTMLButtonElement>("tool-link");
+const showMode = () => {
+  toolMove.setAttribute("aria-pressed", String(!compose.connecting));
+  toolLink.setAttribute("aria-pressed", String(compose.connecting));
+  view.classList.toggle("connecting", compose.connecting);
+};
+compose.onMode = showMode;
+toolMove.onclick = () => {
+  compose.connecting = false;
+  showMode();
+};
+toolLink.onclick = () => {
+  compose.connecting = true;
+  showMode();
+};
+$<HTMLButtonElement>("add-prefill").onclick = () => compose.add("prefill");
+$<HTMLButtonElement>("add-decode").onclick = () => compose.add("decode");
+$<HTMLButtonElement>("add-delay").onclick = () => compose.add("delay");
+showMode();
 
 for (const n of names) select.add(new Option(n, n));
 select.value = names.includes("llmd_nixl_pull") ? "llmd_nixl_pull" : names[0];
 const load = () => {
-  source.value = programs[`./examples/${select.value}.sq`];
-  source.scrollTop = source.scrollLeft = 0;
-  // asked before the run, so the worker cuts the tokens first
-  highlight();
+  editor.text = programs[`./examples/${select.value}.sq`];
   last = null;
   selected = null;
   report.innerHTML = "";
-  drawAndRun();
+  camera.fitted = true;
+  redraw(true);
 };
 select.onchange = load;
-$<HTMLButtonElement>("draw").onclick = drawAndRun;
-horizon.onchange = drawAndRun;
-seed.onchange = drawAndRun;
+$<HTMLButtonElement>("draw").onclick = () => {
+  ranFor = null;
+  redraw(true);
+};
+horizon.onchange = () => redraw(true);
+seed.onchange = () => redraw(true);
 play.onclick = () => {
   if (!player) return;
   if (player.t >= Number(scrub.max)) player.seek(0);
@@ -302,13 +431,22 @@ dashboard.onSeek = (t) => {
   player.seek(t);
   tick(t);
 };
-// the gauges the page offers go into the program, where the viewer sees them, and the run is made again
+// the gauges the page offers go into the program, where the viewer sees them, and the run follows
 dashboard.onAddGauges = (lines) => {
-  source.value = withGauges(source.value, lines);
-  highlight();
-  drawAndRun();
+  editor.text = withGauges(editor.text, lines);
 };
-serq({ cmd: "version" }).then((r) => {
+drawer.ask({ cmd: "version" }).then((r) => {
   if (r.ok) $<HTMLSpanElement>("version").textContent = `serQ ${r.value} · wasm`;
 });
 load();
+
+// for the page checks (scripts/check-page.mjs): what is on the page, without reading the canvas
+(window as unknown as { serqLar: unknown }).serqLar = {
+  camera,
+  editor,
+  compose,
+  outline: () => currentOutline,
+  get generation() {
+    return generation;
+  },
+};

@@ -19,8 +19,12 @@ server, and the site must stay deployable to GitHub Pages.
 - **The replay is serQ's log, whole or cut.** The page replays the log of
   the run it made (`run_logged`), never a made-up one; when the event cap
   cut the log short, the banner says so.
-- **Light.** No UI framework; the wasm is the budget. Report the size
-  (`scripts/build-wasm.sh` prints it) when it moves by more than 10 %.
+- **Light, and not hand-made where a library fits.** No UI framework (React
+  and the like); a focused library for a hard widget is welcome rather
+  than one built by hand (CodeMirror is the text). Never a library that
+  draws the deployment itself: the figure is serQ's. The wasm is the
+  budget. Report the size (`scripts/build-wasm.sh` prints it) when it
+  moves by more than 10 %.
 - **Numbers in docs are measured**, with the date, the serQ commit and the
   command (`scripts/bench.mjs`).
 
@@ -28,6 +32,7 @@ server, and the site must stay deployable to GitHub Pages.
 
 ```
 ./scripts/build-wasm.sh && ./scripts/sync-examples.sh
+./scripts/check-edits.sh            # every figure edit on serQ's examples links and draws
 cd web && npm run build          # tsc --noEmit + vite build
 ```
 

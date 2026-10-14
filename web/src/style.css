@@ -92,7 +92,7 @@ main { display: grid; grid-template-columns: minmax(280px, 400px) 1fr; gap: 16px
   main { grid-template-columns: 1fr; }
   /* the animation first: it is what the page is for */
   .stage { order: -1; }
-  textarea { height: 32vh; }
+  .source { height: 40vh; }
 }
 .row, .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 label { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
@@ -101,26 +101,32 @@ button, select { font: inherit; padding: 4px 10px; border: 1px solid var(--line)
 textarea { width: 100%; height: 64vh; margin-top: 8px; padding: 8px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); resize: vertical; white-space: pre; overflow: auto; }
 /* the program, highlighted: serQ's tokens in a pre under a transparent
    textarea, the two sharing font, padding and scroll */
-.code { position: relative; margin-top: 8px; }
-.code textarea, .code pre { font-size: 12px; line-height: 1.45; padding: 8px; tab-size: 4; letter-spacing: normal; }
-.code textarea { display: block; position: relative; margin-top: 0; background: transparent; color: transparent; caret-color: var(--ink); }
-.code textarea::selection { color: transparent; background: color-mix(in srgb, var(--decode) 30%, transparent); }
-/* the pre has no scrollbars, so it gets their room as padding: it scrolls as far as the textarea */
-.code pre { position: absolute; inset: 0; margin: 0; padding-right: 28px; padding-bottom: 28px; overflow: hidden; white-space: pre; border: 1px solid transparent; border-radius: 6px; background: var(--panel); color: var(--ink); pointer-events: none; }
-/* serQ's roles (serq::frontend::highlight), as its docs colour them */
-.code .structure { color: var(--structure); font-weight: 600; }
-.code .statement { color: var(--statement); }
-.code .option { color: var(--option); }
-.code .observable { color: var(--observable); }
-.code .random { color: var(--random); }
-.code .number { color: var(--number); }
-.code .string { color: var(--string); }
-.code .comment { color: var(--comment); font-style: italic; }
-.code .operator, .code .punctuation { color: var(--dim); }.editor { min-width: 0; }
+/* the program in serQ's roles (frontend::highlight), as CodeMirror marks */
+.source .tok-structure { color: var(--structure); font-weight: 600; }
+.source .tok-statement { color: var(--statement); }
+.source .tok-option { color: var(--option); }
+.source .tok-observable { color: var(--observable); }
+.source .tok-random { color: var(--random); }
+.source .tok-number { color: var(--number); }
+.source .tok-string { color: var(--string); }
+.source .tok-comment { color: var(--comment); font-style: italic; }
+.source .tok-operator, .source .tok-punctuation { color: var(--dim); }
+.editor { min-width: 0; }
+.source { height: 72vh; margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+.editor { min-width: 0; }
 .stage { min-width: 0; }
 .banner { font-size: 12px; color: var(--dim); margin-bottom: 8px; }
-.view { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.view svg { display: block; width: 100%; height: auto; }
+.view { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; height: 360px; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+.view:active { cursor: grabbing; }
+.view svg { display: block; width: 100%; height: 100%; }
+.view.stale svg, .view.stale canvas { opacity: 0.35; }
+.report.stale { opacity: 0.5; }
+.zoom { position: absolute; top: 8px; right: 8px; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: default; }
+.zoom button { padding: 1px 8px; border: none; background: transparent; }
+.zoom button:hover { background: var(--line); }
+.zoom span { font-size: 11px; color: var(--dim); min-width: 3.4em; text-align: center; }
+.diag { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 3; margin: 0; max-height: 45%; overflow: auto; padding: 8px 10px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--alert); background: var(--panel); border: 1px solid var(--alert); border-radius: 6px; cursor: pointer; }
+.diag[hidden] { display: none; }
 .view canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .tip { position: absolute; z-index: 2; pointer-events: none; white-space: pre; font-size: 11px; line-height: 1.35; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
 .tip[hidden] { display: none; }
@@ -204,3 +210,34 @@ textarea { width: 100%; height: 64vh; margin-top: 8px; padding: 8px; font-size: 
 #observes-box { margin-top: 10px; }
 #observes-box summary { cursor: pointer; font-size: 13px; color: var(--dim); margin-bottom: 8px; }
 #observes-box[hidden] { display: none; }
+
+/* editing from the figure */
+.tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; }
+.seg button:first-child { border-radius: 6px 0 0 6px; }
+.seg button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.seg button[aria-pressed="true"], .inspector .seg button[aria-pressed="true"] { background: var(--decode); border-color: var(--decode); color: #fff; }
+.say { font-size: 12px; color: var(--dim); flex: 1 1 200px; min-width: 0; }
+.say.bad { color: var(--alert); }
+.drafts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.drafts[hidden] { display: none; }
+.draft { position: relative; display: flex; flex-direction: column; gap: 1px; padding: 6px 26px 6px 10px; border: 1.5px dashed var(--decode); border-radius: 8px; background: var(--panel); font-size: 12px; user-select: none; -webkit-user-select: none; }
+.draft.nic { border-color: var(--plain); cursor: grab; }
+.draft b { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.draft span, .draft small { color: var(--dim); }
+.draft .x { position: absolute; top: 2px; right: 2px; padding: 0 6px; border: none; background: transparent; color: var(--dim); }
+.draft.drop { border-style: solid; background: color-mix(in srgb, var(--decode) 15%, var(--panel)); }
+.view svg g.drop { filter: drop-shadow(0 0 2px var(--busy)) drop-shadow(0 0 5px var(--busy)); }
+.view.connecting svg g[data-stage], .view.connecting svg path[data-role="arrival"] { cursor: crosshair; }
+.wire { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 10; }
+.wire line { stroke: var(--busy); stroke-width: 2; stroke-dasharray: 6 4; }
+.inspector { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-bottom: 8px; padding: 6px 10px; font-size: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.inspector[hidden] { display: none; }
+.inspector .group { display: inline-flex; align-items: center; gap: 4px; }
+.inspector button, .inspector input, .inspector select { font-size: 12px; padding: 2px 8px; }
+.inspector input { font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); padding: 2px 6px; }
+.inspector .danger { color: var(--alert); }
+.cm-diagnostic-error { border-left-color: var(--alert); }
+.view svg [data-copy] { cursor: pointer; }
+.metrics.stale { opacity: 0.5; }
