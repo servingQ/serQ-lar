@@ -361,8 +361,8 @@ and serQ's messages name their file (`workload: 1:5: …`).
 `crates/serq-wasm` takes an optional workload text on `ir`, `draw`,
 `outline` and `run`. The page lists serQ's `examples/paired/` deployments
 beside the programs; a deployment gets a second picker, its workload, and
-the Code tab a switch between the two files (`Editor.show`, each its own
-undo history). Flow edits the deployment; a diagnostic opens the file it
+the Code tab shows the two files side by side (stacked on a phone), each
+in its own editor and undo history. Flow edits the deployment; a diagnostic opens the file it
 names. A deployment starts under `multi_turn` (`DEFAULT_WORKLOAD` in
 `main.ts`), a stopgap until serQ says each deployment's default workload
 (`examples/pairs.json`, the next serQ step, where every example is a pair).

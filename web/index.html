@@ -57,12 +57,17 @@
       <div class="body relative flex min-h-0">
         <!-- the program: serQ's text, the Code view -->
         <aside id="code-pane" class="code-pane editor flex min-h-0 flex-col border-r border-line bg-panel" aria-label="Program">
-          <!-- a pair's two files: the deployment, which Flow edits, and its workload -->
-          <div id="doc-switch" class="doc-switch flex items-center gap-2 border-b border-line px-3 py-1.5" role="group" aria-label="File" hidden>
-            <button data-doc="deployment" aria-pressed="true"></button>
-            <button data-doc="workload" aria-pressed="false"></button>
+          <!-- a pair's two files side by side (stacked on a phone): the deployment, which Flow edits, and its workload -->
+          <div class="code-split min-h-0 flex-1">
+            <section class="code-file" aria-label="Deployment">
+              <div id="deployment-head" class="code-head" hidden></div>
+              <div id="source" class="source min-h-0 flex-1"></div>
+            </section>
+            <section id="workload-pane" class="code-file" aria-label="Workload" hidden>
+              <div id="workload-head" class="code-head"></div>
+              <div id="workload-source" class="source min-h-0 flex-1"></div>
+            </section>
           </div>
-          <div id="source" class="source min-h-0 flex-1"></div>
           <div class="code-foot flex items-center gap-2 border-t border-line px-3 py-1.5 text-[11px] text-dim">
             <kbd>Ctrl</kbd><kbd>Space</kbd><span>completes</span>
             <span class="opacity-50">·</span>
