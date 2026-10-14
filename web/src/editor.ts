@@ -67,13 +67,9 @@ export class Editor {
   /** What a name is, where the outline says: `queue`, `pool`, … */
   private kinds = new Map<string, string>();
 
-  /** The texts the editor holds and does not show, each with its own undo
-   * history: a pair's other file (`show`). */
-  private held = new Map<string, EditorState>();
-  private shown = "program";
   private readonly extensions: Extension[];
 
-  constructor(parent: HTMLElement, onChange: () => void) {
+  constructor(parent: HTMLElement, onChange: () => void, label = "serQ program") {
     this.extensions = [
           lineNumbers(),
           history(),
@@ -108,39 +104,14 @@ export class Editor {
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChange();
           }),
-          EditorView.contentAttributes.of({ "aria-label": "serQ program", spellcheck: "false" }),
+          EditorView.contentAttributes.of({ "aria-label": label, spellcheck: "false" }),
     ];
     this.view = new EditorView({ parent, state: EditorState.create({ doc: "", extensions: this.extensions }) });
   }
 
-  /** Which text the editor shows. */
-  get showing(): string {
-    return this.shown;
-  }
-
-  /** Start over with these texts, by name, showing the first: each its own
-   * undo history. */
-  load(texts: [string, string][]) {
-    this.held.clear();
-    for (const [key, doc] of texts) this.held.set(key, EditorState.create({ doc, extensions: this.extensions }));
-    this.shown = "";
-    this.show(texts[0][0]);
-  }
-
-  /** Show the text `key`, keeping the one shown as it is, history and all. */
-  show(key: string) {
-    if (key === this.shown) return;
-    if (this.shown) this.held.set(this.shown, this.view.state);
-    const next = this.held.get(key) ?? EditorState.create({ doc: "", extensions: this.extensions });
-    this.held.delete(key);
-    this.view.setState(next);
-    this.shown = key;
-  }
-
-  /** A text the editor holds, shown or not. */
-  textOf(key: string): string | null {
-    if (key === this.shown) return this.text;
-    return this.held.get(key)?.doc.toString() ?? null;
+  /** Another file: its text, with an undo history of its own. */
+  reset(doc: string) {
+    this.view.setState(EditorState.create({ doc, extensions: this.extensions }));
   }
 
   /** serQ's pieces of the text, `[role, text]` in order, whose texts make

@@ -36,7 +36,9 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const root = document.documentElement;
 const select = $<HTMLSelectElement>("program");
 const workloadSelect = $<HTMLSelectElement>("workload");
-const docSwitch = $<HTMLDivElement>("doc-switch");
+const workloadPane = $<HTMLElement>("workload-pane");
+const deploymentHead = $<HTMLDivElement>("deployment-head");
+const workloadHead = $<HTMLDivElement>("workload-head");
 /** serQ's figure, laid out off the page: the Flow view's graph and words are read off it. */
 const view = $<HTMLDivElement>("view");
 const flowEl = $<HTMLDivElement>("flow");
@@ -67,10 +69,14 @@ const dashboard = new Dashboard({
   note: $("metrics-note"),
 });
 
-const editor = new Editor($<HTMLDivElement>("source"), () => {
+const typed = () => {
   clearTimeout(drawTimer);
   drawTimer = window.setTimeout(() => redraw(), DRAW_AFTER);
-});
+};
+/** The program, or a pair's deployment: what Flow edits. */
+const editor = new Editor($<HTMLDivElement>("source"), typed);
+/** A pair's workload, beside the deployment. */
+const workloadEditor = new Editor($<HTMLDivElement>("workload-source"), typed, "serQ workload");
 let drawTimer = 0;
 
 // ------------------------------------------------------------ serQ ----
@@ -112,49 +118,43 @@ function fail(message: string) {
   showPlaying(false);
   diag.textContent = message;
   diag.hidden = false;
-  editor.diagnose(fileOf(message) === editor.showing ? message : null);
+  const file = fileOf(message);
+  editor.diagnose(file === "workload" ? null : message);
+  workloadEditor.diagnose(file === "workload" ? message : null);
 }
 
 // ------------------------------------------------------------ a pair's two files ----
 
 /** The program is a deployment, paired with a workload file (serQ `--workload`). */
 const paired = () => select.value.startsWith("deployment:");
-/** The editor's text Flow edits: the program, or a pair's deployment. */
-const own = () => (paired() ? "deployment" : "program");
 /** The text serQ compiles, and a pair's workload. */
 function texts(): { src: string; workload?: string } {
-  if (!paired()) return { src: editor.text };
-  return { src: editor.textOf("deployment") ?? "", workload: editor.textOf("workload") ?? "" };
+  return paired() ? { src: editor.text, workload: workloadEditor.text } : { src: editor.text };
 }
 /** Which text a diagnostic is about: serQ names a pair's file first (`workload: 3:5: …`). */
 function fileOf(message: string): string {
   if (!paired()) return "program";
   return /^workload: /.test(message) ? "workload" : /^deployment: /.test(message) ? "deployment" : "";
 }
-/** Show one of a pair's files in the editor. */
-function showDoc(key: string) {
-  editor.show(key);
-  for (const b of docSwitch.querySelectorAll<HTMLButtonElement>("button")) b.setAttribute("aria-pressed", String(b.dataset.doc === key));
-  redraw();
-}
-for (const b of docSwitch.querySelectorAll<HTMLButtonElement>("button")) b.onclick = () => showDoc(b.dataset.doc!);
 
 /** Draw the text as it is now; when it means something new, run it after a pause. */
 async function redraw(runNow = false) {
   const gen = ++generation;
   const { src, workload } = texts();
-  const [drawn, irJson, outlined, cut] = await Promise.all([
+  const [drawn, irJson, outlined, cut, cutWorkload] = await Promise.all([
     drawer.ask({ cmd: "draw", src, workload }),
     drawer.ask({ cmd: "ir", src, workload }),
     drawer.ask({ cmd: "outline", src, workload }),
-    drawer.ask({ cmd: "tokens", src: editor.text }),
+    drawer.ask({ cmd: "tokens", src }),
+    workload === undefined ? null : drawer.ask({ cmd: "tokens", src: workload }),
   ]);
   if (gen !== generation) return;
   // serQ's roles colour the text, whether or not it links
   if (cut.ok) editor.colour(JSON.parse(cut.value));
+  if (cutWorkload?.ok) workloadEditor.colour(JSON.parse(cutWorkload.value));
   // the outline needs the text to parse, not to link: an edit can follow a link error
   currentOutline = outlined.ok ? readOutline(outlined.value, src) : null;
-  if (currentOutline && editor.showing === own()) editor.outlined = kinds(currentOutline);
+  if (currentOutline) editor.outlined = kinds(currentOutline);
   if (!drawn.ok) return fail(drawn.error);
   if (!irJson.ok) return fail(irJson.error);
   diag.hidden = true;
@@ -329,9 +329,7 @@ reportAll.addEventListener("click", (e) => {
 diag.addEventListener("click", () => {
   const message = diag.textContent ?? "";
   setTab("code");
-  const file = fileOf(message);
-  if (paired() && file) showDoc(file);
-  editor.goTo(message);
+  (fileOf(message) === "workload" ? workloadEditor : editor).goTo(message);
 });
 
 // ------------------------------------------------------------ pointer ----
@@ -388,10 +386,7 @@ function sayIt(m: string, bad?: boolean) {
 const compose = new Compose({
   text: () => texts().src,
   outline: () => currentOutline,
-  apply: (edits) => {
-    if (editor.showing !== own()) showDoc(own());
-    editor.apply(edits);
-  },
+  apply: (edits) => editor.apply(edits),
   say: (m, bad) => sayIt(m, bad),
 });
 // ------------------------------------------------------------ the views ----
@@ -461,7 +456,6 @@ const editHost: EditHost = {
     const at = currentOutline && codeOf(currentOutline, family(id));
     if (!at) return void sayIt(`${id} is not written as such in the text: serQ's outline does not place it.`, true);
     setTab("code");
-    if (editor.showing !== own()) showDoc(own());
     editor.view.dispatch({ selection: { anchor: at[0], head: at[1] }, effects: EditorView.scrollIntoView(at[0], { y: "center" }) });
     editor.view.focus();
   },
@@ -534,8 +528,6 @@ function setTab(t: Tab) {
   // serQ's figure stays laid out (the graph is read off it), out of sight, as wide as the stage
   replayPane.style.width = `${mainEl.clientWidth}px`;
   if (t === "code") editor.view.focus();
-  // Flow and Metrics are the deployment's: the editor shows it again
-  else if (paired() && editor.showing !== own()) showDoc(own());
   if (location.hash !== `#${t}`) history.replaceState(null, "", `#${t}`);
   showGraph();
 }
@@ -609,21 +601,15 @@ select.value = names.includes("llmd_nixl_pull") ? "llmd_nixl_pull" : names[0];
 const load = () => {
   const pair = paired();
   workloadSelect.hidden = !pair;
-  docSwitch.hidden = !pair;
+  workloadPane.hidden = !pair;
+  deploymentHead.hidden = !pair;
   if (pair) {
     const d = select.value.slice("deployment:".length);
-    const w = workloadSelect.value;
-    editor.load([
-      ["deployment", deployments[`./examples/deployments/${d}.sq`]],
-      ["workload", workloads[`./examples/workloads/${w}.sq`]],
-    ]);
-    const [db, wb] = docSwitch.querySelectorAll<HTMLButtonElement>("button");
-    db.textContent = `${d}.sq`;
-    wb.textContent = `${w}.sq`;
-    db.setAttribute("aria-pressed", "true");
-    wb.setAttribute("aria-pressed", "false");
+    editor.reset(deployments[`./examples/deployments/${d}.sq`]);
+    deploymentHead.innerHTML = `<b>${d}.sq</b> · deployment`;
+    showWorkload();
   } else {
-    editor.load([["program", programs[`./examples/${select.value}.sq`]]]);
+    editor.reset(programs[`./examples/${select.value}.sq`]);
   }
   last = null;
   selected = null;
@@ -633,18 +619,15 @@ const load = () => {
   redraw(true);
 };
 select.onchange = load;
-// another workload: the deployment as it is now, under it
-workloadSelect.onchange = () => {
-  const { src } = texts();
+/** The workload picked, beside the deployment. */
+function showWorkload() {
   const w = workloadSelect.value;
-  editor.load([
-    ["deployment", src],
-    ["workload", workloads[`./examples/workloads/${w}.sq`]],
-  ]);
-  const [db, wb] = docSwitch.querySelectorAll<HTMLButtonElement>("button");
-  wb.textContent = `${w}.sq`;
-  db.setAttribute("aria-pressed", "true");
-  wb.setAttribute("aria-pressed", "false");
+  workloadEditor.reset(workloads[`./examples/workloads/${w}.sq`]);
+  workloadHead.innerHTML = `<b>${w}.sq</b> · workload`;
+}
+// another workload: the deployment as it is now, edits and history kept, under it
+workloadSelect.onchange = () => {
+  showWorkload();
   last = null;
   redraw(true);
 };
@@ -683,7 +666,6 @@ dashboard.onSeek = (t) => {
 };
 // the gauges the page offers go into the program, where the viewer sees them, and the run follows
 dashboard.onAddGauges = (lines) => {
-  if (editor.showing !== own()) showDoc(own());
   editor.text = withGauges(editor.text, lines);
 };
 // the serQ tag the page was built from (vite.config.ts); a checkout past
@@ -695,7 +677,9 @@ dashboard.onAddGauges = (lines) => {
   v.href = `https://github.com/servingQ/serQ/tree/${sha ?? __SERQ_REF__}`;
 }
 drawer.ask({ cmd: "vocabulary" }).then((r) => {
-  if (r.ok) editor.vocabulary = JSON.parse(r.value);
+  if (!r.ok) return;
+  editor.vocabulary = JSON.parse(r.value);
+  workloadEditor.vocabulary = JSON.parse(r.value);
 });
 load();
 

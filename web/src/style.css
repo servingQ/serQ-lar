@@ -144,10 +144,18 @@ label { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
 .btn-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); border-color: color-mix(in srgb, var(--accent) 88%, #000); }
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; box-shadow: none; color: var(--dim); }
 .icon-btn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); border-color: transparent; }
-/* the Code tab's two files of a pair */
-.doc-switch button { height: 22px; padding: 0 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--dim); font: 12px var(--font-mono); }
-.doc-switch button:hover { color: var(--ink); }
-.doc-switch button[aria-pressed="true"] { border-color: var(--line); background: var(--raised); color: var(--ink); }
+/* the Code tab: a pair's deployment and workload side by side, stacked on a phone */
+.code-split { display: flex; flex-direction: row; }
+.code-file { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; }
+.code-file[hidden] { display: none; }
+.code-file + .code-file { border-left: 1px solid var(--line); }
+.code-head { padding: 5px 12px; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--dim); font: 12px var(--font-mono); }
+.code-head[hidden] { display: none; }
+.code-head b { color: var(--ink); font-weight: 600; }
+@media (max-width: 640px) {
+  .code-split { flex-direction: column; }
+  .code-file + .code-file { border-left: none; border-top: 1px solid var(--line); }
+}
 .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
 .field { display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
 .field > span { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
