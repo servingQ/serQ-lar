@@ -173,9 +173,9 @@ const queueDraft = (src: string, role: snip.Own, stem: string): Draft => {
     check("router: P a family of one", src, route(src, ol(src), "P"), { stages: ["P"], text: ["in 1 by (work(P["] });
   }
   check("router: llmd's D is routed already", l, route(l, ol(l), "D"), { refused: /chooses its member already/ });
-  // a pool of engines the palette makes: its call chooses a member already
+  // a family of engines (`queue E[3]`) a draft writes with its choice: the router has it already
   const E = fresh(v, "E");
-  const d: Draft = { kind: "queue", name: E, role: "decode", family: "3", text: snip.decode(E, 3, outputParam(ol(v)) ?? undefined), relations: [] };
+  const d: Draft = { kind: "queue", name: E, role: "agg", family: "3", text: snip.engine("agg", E, 3, outputParam(ol(v)) ?? undefined), relations: [] };
   const f = connect(v, ol(v), { kind: "arrival" }, { kind: "draft", draft: d });
   if (typeof f !== "string") {
     const s = apply(v, f);

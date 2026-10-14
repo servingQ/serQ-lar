@@ -151,7 +151,7 @@ async function redraw(runNow = false) {
   if (cut.ok) editor.colour(JSON.parse(cut.value));
   if (cutWorkload?.ok) workloadEditor.colour(JSON.parse(cutWorkload.value));
   // the outline needs the text to parse, not to link: an edit can follow a link error
-  currentOutline = outlined.ok ? readOutline(outlined.value, src) : null;
+  currentOutline = outlined.ok ? readOutline(outlined.value, src, workload) : null;
   if (currentOutline) editor.outlined = kinds(currentOutline);
   if (!drawn.ok) return fail(drawn.error);
   if (!irJson.ok) return fail(irJson.error);
@@ -453,18 +453,26 @@ const editHost: EditHost = {
   routeTo: (id) => compose.routeTo(family(id)),
   inspect(id) {
     if (!currentOutline) return null;
-    const apply = (edits: Edit[]) => editor.apply(edits);
-    if (id === CLIENT) return clientOf(currentOutline, editor.text, shownGraph?.nodes.find((n) => n.id === CLIENT)?.sub ?? "", apply);
+    const { src, workload } = texts();
+    if (id === CLIENT) {
+      // the client is the workload file: its outline, its text, its editor
+      const words = shownGraph?.nodes.find((n) => n.id === CLIENT)?.sub ?? "";
+      const ol = currentOutline.workload_file ?? { ...currentOutline, workload_items: undefined };
+      return clientOf(ol, workload, words, (edits: Edit[]) => workloadEditor.apply(edits), currentOutline.signature);
+    }
     if (!id.startsWith("#")) return null;
     const pools = drawnFrom ? ((JSON.parse(drawnFrom.ir) as { pools?: { name: string; block: number | null }[] }).pools ?? []) : [];
-    return routerOf(currentOutline, editor.text, new Set(pools.filter((p) => p.block !== null).map((p) => p.name)), apply);
+    return routerOf(currentOutline, src, new Set(pools.filter((p) => p.block !== null).map((p) => p.name)), (edits: Edit[]) => editor.apply(edits));
   },
   code(id) {
-    const at = currentOutline && codeOf(currentOutline, family(id));
+    // the client is written in the workload file
+    const ed = id === CLIENT ? workloadEditor : editor;
+    const ol = id === CLIENT ? currentOutline?.workload_file : currentOutline;
+    const at = ol && codeOf(ol, family(id));
     if (!at) return void sayIt(`${id} is not written as such in the text: serQ's outline does not place it.`, true);
     setTab("code");
-    editor.view.dispatch({ selection: { anchor: at[0], head: at[1] }, effects: EditorView.scrollIntoView(at[0], { y: "center" }) });
-    editor.view.focus();
+    ed.view.dispatch({ selection: { anchor: at[0], head: at[1] }, effects: EditorView.scrollIntoView(at[0], { y: "center" }) });
+    ed.view.focus();
   },
 };
 

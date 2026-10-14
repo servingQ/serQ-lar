@@ -97,14 +97,30 @@ export interface Outline {
   /** Absent before serQ's outline said them (docs/upstream.md U21). */
   chooses?: Choose[];
   workload_items?: WorkloadItem[];
+  /** A pair's workload file's outline, its ranges into that file's text. */
+  workload_file?: Outline;
 }
 
 /** The outline serQ wrote for `src`, its byte offsets made string indices. */
-export function outline(json: string, src: string): Outline {
+export function outline(json: string, src: string, workload?: string): Outline {
+  const raw = JSON.parse(json) as Record<string, unknown>;
+  const file = raw.workload_file;
+  delete raw.workload_file;
+  const o = indexed(raw, src) as Outline;
+  // a pair's workload file: its ranges are into its own text
+  if (file && workload !== undefined) o.workload_file = indexed(file, workload) as Outline;
+  return o;
+}
+
+/** `v` with each `[start, end)` byte range into `src` made string indices. */
+function indexed(v: unknown, src: string): unknown {
   const at = byteIndex(src);
-  return JSON.parse(json, (_key, v) =>
-    Array.isArray(v) && v.length === 2 && typeof v[0] === "number" && typeof v[1] === "number" ? [at(v[0]), at(v[1])] : v,
-  ) as Outline;
+  const walk = (x: unknown): unknown => {
+    if (Array.isArray(x)) return x.length === 2 && typeof x[0] === "number" && typeof x[1] === "number" ? [at(x[0]), at(x[1])] : x.map(walk);
+    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).map(([k, y]) => [k, walk(y)]));
+    return x;
+  };
+  return walk(v);
 }
 
 /** What a request carries as its prompt: the server's first parameter the

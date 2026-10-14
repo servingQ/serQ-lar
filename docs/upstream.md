@@ -428,16 +428,21 @@ Issue draft:
 > Before: `<path data-role="arrival" data-to="#0">`, `<path data-role="exit" data-from="D">` … `out`
 > After: `<g data-node="client" data-role="client">`(도착은 client에서 나가고, exit는 응답으로 client에 돌아온다: `data-to="client"`), `<rect data-role="server">`(client를 뺀 전부를 감싸는 틀). tool 시간과 think 시간은 client에 있다.
 
-## U21. A router's choice and the workload's statements in the outline
+## U21. A router's choice and the workload's statements in the outline — landed for one file
 
 The inspector edits a router's keys and the client's properties where
-the text writes them. serQ's outline placed neither: serQ
+the text writes them. serQ
 [#640](https://github.com/servingQ/serQ/issues/640),
-[#641](https://github.com/servingQ/serQ/pull/641) add `chooses` (a
-`choose`'s variable, count, each key, its block) and `workload_items`
-(`arrive`, `set`, `send`, `tool`, … with their values). Until a serQ tag
-has them, `web/src/inspect.ts` shows serQ's words and sends the edit to
-Code.
+[#641](https://github.com/servingQ/serQ/pull/641) (in v0.1.6-alpha.8)
+add `chooses` (a `choose`'s variable, count, each key, its block) and
+`workload_items` (`arrive`, `set`, `send`, `tool`, … with their values).
+For a pair, `Outline::split` left the workload's statements in the
+deployment's outline, at the joined text's offsets: serQ
+[#650](https://github.com/servingQ/serQ/issues/650),
+[#651](https://github.com/servingQ/serQ/pull/651) move them into the
+workload file's. `crates/serq-wasm` hands the workload file's outline
+under `workload_file`. Until a tag has #651, a pair's client inspector
+finds no statements and sends the edit to Code.
 
 ## U22. The rules serq-lar knows in serQ's place
 

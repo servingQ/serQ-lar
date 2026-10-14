@@ -109,12 +109,12 @@ function presetsOf(ol: Outline, of: string, v: string, kv: Set<string>): { label
 /** The client: the workload's arrival, what each turn draws, its tool
  * calls; `arrival` is serQ's words on the arrival arrow, for a serQ whose
  * outline does not place them. */
-export function clientOf(ol: Outline, src: string, arrival: string, apply: (edits: Edit[]) => void): Inspect {
+export function clientOf(ol: Outline, src: string, arrival: string, apply: (edits: Edit[]) => void, signature = ol.signature): Inspect {
   const items = ol.workload_items;
-  const sig = ol.signature;
+  const sig = signature;
   const sends = sig?.params.length ? `sends ${sig.params.map((p) => (p.hidden ? `hidden ${p.name}` : p.name)).join(", ")}` : "";
   const sub = ["the workload: one a program", sends].filter(Boolean).join(" · ");
-  if (!items) {
+  if (!items?.length) {
     return {
       kind: "client",
       title: "client",

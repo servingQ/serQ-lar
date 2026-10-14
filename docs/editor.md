@@ -155,7 +155,9 @@ See [upstream.md](upstream.md), U10.
    random, fewest queued or holding on a pool, prefix cached on a KV
    pool), removed, or added; and the calls it makes. The client: its
    arrival process, what each session starts with, what each turn draws,
-   what each request sends, and what comes between turns (a tool's time).
+   what each request sends, and what comes between turns (a tool's time);
+   for a pair, the workload file's (its outline's `workload_file`), and the
+   edit goes into that file.
    With a serQ whose outline places neither, it shows serQ's words and
    sends the edit to Code. Which keys are offered is a stopgap: serQ #645
    asks serQ to say which a `choose` can take.

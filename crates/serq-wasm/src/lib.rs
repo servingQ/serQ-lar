@@ -150,12 +150,17 @@ pub fn tokens(src: &str) -> String {
 /// Where each declaration, relation and entry call is written in the text,
 /// as JSON (`serq::outline`): what the page changes when the figure is
 /// edited. Parse only, so text that does not link still has one. Paired,
-/// it is the deployment's (`serq::outline_paired`): the figure edits the
-/// deployment.
+/// it is the deployment's (`serq::outline_paired`), which the figure edits,
+/// with the workload file's under `workload_file`, which the client's
+/// inspector edits.
 #[wasm_bindgen]
 pub fn outline(src: &str, workload: Option<String>) -> Result<String, JsError> {
     match workload {
-        Some(w) => serq::outline_paired(src, &w).map(|(d, _)| d.to_json()),
+        Some(w) => serq::outline_paired(src, &w).map(|(d, w)| {
+            let mut v = serde_json::to_value(&d).expect("an outline serializes");
+            v["workload_file"] = serde_json::to_value(&w).expect("an outline serializes");
+            v.to_string()
+        }),
         None => serq::outline(src).map(|o| o.to_json()),
     }
     .map_err(|e| JsError::new(&e))
