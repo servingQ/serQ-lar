@@ -29,7 +29,6 @@
           <label class="dim">seed <input id="seed" type="number" min="1" value="1" aria-label="Seed" /></label>
         </div>
         <textarea id="source" spellcheck="false" aria-label="serQ program"></textarea>
-        <pre id="report"></pre>
       </section>
       <section class="stage">
         <div id="banner" class="banner"></div>
@@ -56,9 +55,10 @@
           <li><i class="dot halo"></i>in the forward pass running now</li>
           <li><i class="bar"></i>the pass's progress; the budget bar is its tokens</li>
           <li><i class="dot flash"></i>preempted</li>
-          <li class="hint">hover a session for its story, click to follow it</li>
+          <li class="hint">hover a session for its story, click to follow it; click a station or a drum for its numbers</li>
         </ul>
         <div class="dim mono" id="status"></div>
+        <div id="report" class="report" aria-live="polite"></div>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

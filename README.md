@@ -11,7 +11,9 @@ waits in a pool's queue, filled once admitted; **orange** in a prefill,
 green ring while the forward pass an engine is running covers it, and the
 engine's budget bar fills with that pass's tokens. A red ring flashes at a
 preemption. Hover a session for its story, click to follow it. The report of
-the same run is beside the program.
+the same run is under the figure, a table a section with the unit in each
+header; click a station or a drum (or its chip) to read one component's part
+of it, field by field.
 
 The figure, the IR, the report and the log are serQ's; the page adds only the
 replay. It deploys to GitHub Pages.
@@ -25,6 +27,7 @@ web/                Vite + TypeScript, no framework
   src/anchors.ts      where each stage, pool, arrival and exit is in the SVG
   src/events.ts       the run log's shape (serQ's docs/reference/log.md)
   src/player.ts       replays the log on a canvas over the SVG
+  src/report.ts       the report (serQ's docs/reference/cli.md) as tables, whole or one component's
 scripts/            build-wasm.sh, sync-examples.sh, bench.mjs
 docs/               performance.md, upstream.md
 SERQ_REF            the serQ commit (or tag) CI builds against
