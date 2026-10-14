@@ -46,14 +46,23 @@ See [upstream.md](upstream.md), U10.
    (in the Flow tab, over the canvas); a click on it opens the text there.
 2. **Zoom and pan.** Wheel or pinch about the pointer, drag to pan,
    double-click or Fit to fit. The replay's canvas follows (`camera.ts`).
-3. **Palette** (the Flow tab's Parts). Prefill, Decode, Delay: a draft,
-   dragged onto the canvas, where it stays until an arrow places it;
-   dropped on a station, that station calls it at once and serQ's layout
-   places it. Prefill pool, Decode pool: a pool of N engines (llm-d's
-   InferencePool), a family `queue D[N]`; its call chooses a member
-   (`choose k in N by (work(D[k]))`), and its inspector steps N. A click
-   on a part, from a phone or the keyboard, makes the draft under the
-   deployment.
+3. **Parts** (the Flow tab's sidebar), each dragged and dropped; a
+   click does nothing.
+   - *Engines*: Prefill, Decode, Delay: a draft, dropped on the canvas,
+     where it stays until an arrow places it; dropped on a station, that
+     station calls it at once and serQ's layout places it.
+   - *Pools*: Prefill pool, Decode pool: a pool of N engines (llm-d's
+     InferencePool), a family `queue D[N]`, dropped as an engine is; its
+     call chooses a member (`choose k in N by (work(D[k]))`), and its
+     inspector steps N. KV blocks, Request slots: a memory pool, dropped
+     on an engine, declared there (7) by a name its queue has not got.
+   - *Arrows*: Call, dropped on the arrival or a station: an arrow from
+     there follows the pointer, and the station or draft clicked next is
+     its end (5). Esc, or a click on the empty canvas, drops it.
+   - *KV transfer*: KV pull, KV push, dropped on the source's engine, the
+     reader clicked next: the copy (`copy` in `edit.ts`), with the NICs,
+     the connector and the relation; a push makes the source's call a
+     leg of its own (`fork { … }`), as the inspector's pull ⇄ push does.
 4. **The Edit view** (React Flow, the Flow tab). serQ's graph as nodes to
    drag and wire: the nodes and arrows are read off serQ's figure
    (`data-node`, `data-from`, `data-to`, `data-copy`), the kinds off the IR,
@@ -76,7 +85,7 @@ See [upstream.md](upstream.md), U10.
    connection between two handles is an arrow below; a node dragged keeps
    its place in this browser (a layout, not the program); Delete removes a
    station; "serQ's layout" puts every node back.
-5. **Arrows** (a connection in the Edit view). From the arrival or a
+5. **Arrows** (a connection in the Edit view, or a Call part). From the arrival or a
    station to a station or a draft: the target's call after the source's,
    in the gateway's route or the server; a family's call chooses its
    member. From a NIC's draft to a queue: the KV copy (`kvt.nixl_pull`), with the NICs,

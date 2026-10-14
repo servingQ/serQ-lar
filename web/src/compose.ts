@@ -42,7 +42,6 @@ export class Compose {
         : { kind: "queue", name, role: kind, family: null, text: kind === "prefill" ? snip.prefill(name) : snip.decode(name), relations: [] };
     this.drafts.push(d);
     this.onDrafts();
-    this.host.say(`Draft ${name}: draw an arrow from the arrival or a station to it.`);
     return d;
   }
 
@@ -56,7 +55,6 @@ export class Compose {
     const d: Draft = { kind: "queue", name, role, family: String(n), text, relations: [] };
     this.drafts.push(d);
     this.onDrafts();
-    this.host.say(`Draft ${name}[${n}], a pool of ${n} ${role} engines: draw an arrow from the arrival or a station to it.`);
     return d;
   }
 
@@ -97,6 +95,20 @@ export class Compose {
     return true;
   }
 
+  /** A KV copy from station `from`'s queue to station `to`'s, a pull or a
+   * push (edit.ts `copy`): the NICs, the connector and the relation written. */
+  copyKv(from: string, to: string, mode: "pull" | "push") {
+    const ol = this.host.outline();
+    if (!ol) return this.host.say("serQ cannot read the text as it is: fix it first.", true);
+    const queue = (stage: string) => stage.replace(/\.nic$/, "").replace(/\[.*\]$/, "");
+    const [source, reader] = [queue(from), queue(to)];
+    if (source === reader) return this.host.say("A KV copy joins two queues.", true);
+    const edits = copy(this.host.text(), ol, source, reader, mode);
+    if (typeof edits === "string") return this.host.say(edits, true);
+    this.host.apply(edits);
+    this.host.say(`A KV copy from ${source} to ${reader}, ${mode === "pull" ? "pulled by the reader" : "pushed by the source"}: written into the text. Ctrl+Z undoes it.`);
+  }
+
   /** Remove the queue a station is, with its calls and copies. */
   removeStation(stage: string) {
     const ol = this.host.outline();
@@ -128,7 +140,6 @@ export class Compose {
     const name = stage.replace(/\.nic$/, "");
     if (!this.drafts.some((d) => d.kind === "nic" && d.queue === name)) this.drafts.push({ kind: "nic", queue: name });
     this.onDrafts();
-    this.host.say(`Draft ${name}.nic: draw an arrow from it to the queue that reads the KV from ${name}.`);
   }
 
   /** Declare a memory pool in a station's queue, with its capacity: request slots on its engine, or KV blocks on its device. */
@@ -241,8 +252,7 @@ export class Compose {
         const text = snip.rename(src.slice(q.range[0], q.range[1]), q.name, name);
         const relations = ol.relations.filter((r) => r.reader === q.name).map((r) => snip.rename(src.slice(r.range[0], r.range[1]), r.reader, name));
         this.drafts.push({ kind: "queue", name, role: q.roles[0], family: q.family, text, relations });
-        this.onDrafts();
-        return this.host.say(`Draft ${name}, a copy of ${q.name}: draw an arrow to it to place it.`);
+        return this.onDrafts();
       }
       case "remove":
         this.chosen = null;
