@@ -16,9 +16,15 @@ import { Serq } from "./serq";
 import type { Ir, Report as RunReport } from "./series";
 
 const programs = import.meta.glob<string>("./examples/*.sq", { query: "?raw", import: "default", eager: true });
-const names = Object.keys(programs)
-  .map((p) => p.replace(/^.*\//, "").replace(/\.sq$/, ""))
-  .sort();
+/** Deployments without a workload, and the workloads the tool pairs with them (serQ `--workload`). */
+const deployments = import.meta.glob<string>("./examples/deployments/*.sq", { query: "?raw", import: "default", eager: true });
+const workloads = import.meta.glob<string>("./examples/workloads/*.sq", { query: "?raw", import: "default", eager: true });
+const stem = (p: string) => p.replace(/^.*\//, "").replace(/\.sq$/, "");
+const names = Object.keys(programs).map(stem).sort();
+const deploymentNames = Object.keys(deployments).map(stem).sort();
+const workloadNames = Object.keys(workloads).map(stem).sort();
+/** The workload a deployment starts under. */
+const DEFAULT_WORKLOAD = "multi_turn";
 
 /** The most log events a run keeps: past it the replay stops early and says so. */
 const LOG_CAP = 400_000;
@@ -29,6 +35,8 @@ const RUN_AFTER = 700;
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const root = document.documentElement;
 const select = $<HTMLSelectElement>("program");
+const workloadSelect = $<HTMLSelectElement>("workload");
+const docSwitch = $<HTMLDivElement>("doc-switch");
 /** serQ's figure, laid out off the page: the Flow view's graph and words are read off it. */
 const view = $<HTMLDivElement>("view");
 const flowEl = $<HTMLDivElement>("flow");
@@ -104,25 +112,49 @@ function fail(message: string) {
   showPlaying(false);
   diag.textContent = message;
   diag.hidden = false;
-  editor.diagnose(message);
+  editor.diagnose(fileOf(message) === editor.showing ? message : null);
 }
+
+// ------------------------------------------------------------ a pair's two files ----
+
+/** The program is a deployment, paired with a workload file (serQ `--workload`). */
+const paired = () => select.value.startsWith("deployment:");
+/** The editor's text Flow edits: the program, or a pair's deployment. */
+const own = () => (paired() ? "deployment" : "program");
+/** The text serQ compiles, and a pair's workload. */
+function texts(): { src: string; workload?: string } {
+  if (!paired()) return { src: editor.text };
+  return { src: editor.textOf("deployment") ?? "", workload: editor.textOf("workload") ?? "" };
+}
+/** Which text a diagnostic is about: serQ names a pair's file first (`workload: 3:5: …`). */
+function fileOf(message: string): string {
+  if (!paired()) return "program";
+  return /^workload: /.test(message) ? "workload" : /^deployment: /.test(message) ? "deployment" : "";
+}
+/** Show one of a pair's files in the editor. */
+function showDoc(key: string) {
+  editor.show(key);
+  for (const b of docSwitch.querySelectorAll<HTMLButtonElement>("button")) b.setAttribute("aria-pressed", String(b.dataset.doc === key));
+  redraw();
+}
+for (const b of docSwitch.querySelectorAll<HTMLButtonElement>("button")) b.onclick = () => showDoc(b.dataset.doc!);
 
 /** Draw the text as it is now; when it means something new, run it after a pause. */
 async function redraw(runNow = false) {
   const gen = ++generation;
-  const src = editor.text;
+  const { src, workload } = texts();
   const [drawn, irJson, outlined, cut] = await Promise.all([
-    drawer.ask({ cmd: "draw", src }),
-    drawer.ask({ cmd: "ir", src }),
-    drawer.ask({ cmd: "outline", src }),
-    drawer.ask({ cmd: "tokens", src }),
+    drawer.ask({ cmd: "draw", src, workload }),
+    drawer.ask({ cmd: "ir", src, workload }),
+    drawer.ask({ cmd: "outline", src, workload }),
+    drawer.ask({ cmd: "tokens", src: editor.text }),
   ]);
   if (gen !== generation) return;
   // serQ's roles colour the text, whether or not it links
   if (cut.ok) editor.colour(JSON.parse(cut.value));
   // the outline needs the text to parse, not to link: an edit can follow a link error
   currentOutline = outlined.ok ? readOutline(outlined.value, src) : null;
-  if (currentOutline) editor.outlined = kinds(currentOutline);
+  if (currentOutline && editor.showing === own()) editor.outlined = kinds(currentOutline);
   if (!drawn.ok) return fail(drawn.error);
   if (!irJson.ok) return fail(irJson.error);
   diag.hidden = true;
@@ -160,14 +192,14 @@ async function redraw(runNow = false) {
 /** Run the text drawn at `gen` with the log, and replay the log over the figure. */
 async function runIt(gen: number, key: string) {
   if (gen !== generation) return;
-  const src = editor.text;
+  const { src, workload } = texts();
   const H = Number(horizon.value);
   const S = Number(seed.value) || 1;
   // a run still going is for older text: stop it rather than wait for it
   if (runner.busy) runner.kill();
   status.textContent += " · running…";
   root.classList.add("busy");
-  const ran = await runner.ask({ cmd: "run", src, horizon: H, seed: S, log: LOG_CAP });
+  const ran = await runner.ask({ cmd: "run", src, workload, horizon: H, seed: S, log: LOG_CAP });
   if (gen !== generation) return;
   if (!ran.ok) return fail(ran.error);
   const svg = view.querySelector("svg");
@@ -295,8 +327,11 @@ reportAll.addEventListener("click", (e) => {
 
 /** serQ's diagnostic starts `LINE:COL:`; clicking it opens the text with the caret there. */
 diag.addEventListener("click", () => {
+  const message = diag.textContent ?? "";
   setTab("code");
-  editor.goTo(diag.textContent ?? "");
+  const file = fileOf(message);
+  if (paired() && file) showDoc(file);
+  editor.goTo(message);
 });
 
 // ------------------------------------------------------------ pointer ----
@@ -351,9 +386,12 @@ function sayIt(m: string, bad?: boolean) {
   sayTimer = window.setTimeout(() => (say.textContent = ""), 9000);
 }
 const compose = new Compose({
-  text: () => editor.text,
+  text: () => texts().src,
   outline: () => currentOutline,
-  apply: (edits) => editor.apply(edits),
+  apply: (edits) => {
+    if (editor.showing !== own()) showDoc(own());
+    editor.apply(edits);
+  },
   say: (m, bad) => sayIt(m, bad),
 });
 // ------------------------------------------------------------ the views ----
@@ -423,6 +461,7 @@ const editHost: EditHost = {
     const at = currentOutline && codeOf(currentOutline, family(id));
     if (!at) return void sayIt(`${id} is not written as such in the text: serQ's outline does not place it.`, true);
     setTab("code");
+    if (editor.showing !== own()) showDoc(own());
     editor.view.dispatch({ selection: { anchor: at[0], head: at[1] }, effects: EditorView.scrollIntoView(at[0], { y: "center" }) });
     editor.view.focus();
   },
@@ -495,6 +534,8 @@ function setTab(t: Tab) {
   // serQ's figure stays laid out (the graph is read off it), out of sight, as wide as the stage
   replayPane.style.width = `${mainEl.clientWidth}px`;
   if (t === "code") editor.view.focus();
+  // Flow and Metrics are the deployment's: the editor shows it again
+  else if (paired() && editor.showing !== own()) showDoc(own());
   if (location.hash !== `#${t}`) history.replaceState(null, "", `#${t}`);
   showGraph();
 }
@@ -553,10 +594,37 @@ new ResizeObserver(() => (replayPane.style.width = `${mainEl.clientWidth}px`)).o
 }
 
 
-for (const n of names) select.add(new Option(n, n));
+{
+  const one = document.createElement("optgroup");
+  one.label = "programs";
+  for (const n of names) one.append(new Option(n, n));
+  const pairs = document.createElement("optgroup");
+  pairs.label = "deployments, under a workload";
+  for (const n of deploymentNames) pairs.append(new Option(n, `deployment:${n}`));
+  select.append(one, pairs);
+  for (const n of workloadNames) workloadSelect.add(new Option(n, n));
+  workloadSelect.value = workloadNames.includes(DEFAULT_WORKLOAD) ? DEFAULT_WORKLOAD : workloadNames[0];
+}
 select.value = names.includes("llmd_nixl_pull") ? "llmd_nixl_pull" : names[0];
 const load = () => {
-  editor.text = programs[`./examples/${select.value}.sq`];
+  const pair = paired();
+  workloadSelect.hidden = !pair;
+  docSwitch.hidden = !pair;
+  if (pair) {
+    const d = select.value.slice("deployment:".length);
+    const w = workloadSelect.value;
+    editor.load([
+      ["deployment", deployments[`./examples/deployments/${d}.sq`]],
+      ["workload", workloads[`./examples/workloads/${w}.sq`]],
+    ]);
+    const [db, wb] = docSwitch.querySelectorAll<HTMLButtonElement>("button");
+    db.textContent = `${d}.sq`;
+    wb.textContent = `${w}.sq`;
+    db.setAttribute("aria-pressed", "true");
+    wb.setAttribute("aria-pressed", "false");
+  } else {
+    editor.load([["program", programs[`./examples/${select.value}.sq`]]]);
+  }
   last = null;
   selected = null;
   metricsSelected = null;
@@ -565,6 +633,21 @@ const load = () => {
   redraw(true);
 };
 select.onchange = load;
+// another workload: the deployment as it is now, under it
+workloadSelect.onchange = () => {
+  const { src } = texts();
+  const w = workloadSelect.value;
+  editor.load([
+    ["deployment", src],
+    ["workload", workloads[`./examples/workloads/${w}.sq`]],
+  ]);
+  const [db, wb] = docSwitch.querySelectorAll<HTMLButtonElement>("button");
+  wb.textContent = `${w}.sq`;
+  db.setAttribute("aria-pressed", "true");
+  wb.setAttribute("aria-pressed", "false");
+  last = null;
+  redraw(true);
+};
 $<HTMLButtonElement>("draw").onclick = () => {
   ranFor = null;
   redraw(true);
@@ -600,6 +683,7 @@ dashboard.onSeek = (t) => {
 };
 // the gauges the page offers go into the program, where the viewer sees them, and the run follows
 dashboard.onAddGauges = (lines) => {
+  if (editor.showing !== own()) showDoc(own());
   editor.text = withGauges(editor.text, lines);
 };
 // the serQ tag the page was built from (vite.config.ts); a checkout past

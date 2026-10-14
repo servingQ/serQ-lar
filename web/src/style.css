@@ -144,6 +144,10 @@ label { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
 .btn-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); border-color: color-mix(in srgb, var(--accent) 88%, #000); }
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; box-shadow: none; color: var(--dim); }
 .icon-btn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); border-color: transparent; }
+/* the Code tab's two files of a pair */
+.doc-switch button { height: 22px; padding: 0 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--dim); font: 12px var(--font-mono); }
+.doc-switch button:hover { color: var(--ink); }
+.doc-switch button[aria-pressed="true"] { border-color: var(--line); background: var(--raised); color: var(--ink); }
 .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
 .field { display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
 .field > span { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }

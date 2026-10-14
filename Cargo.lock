@@ -175,8 +175,8 @@ dependencies = [
 
 [[package]]
 name = "serq"
-version = "0.1.6-alpha.7"
-source = "git+https://github.com/servingQ/serQ?tag=v0.1.6-alpha.7#ea630d12327b0606c4c06a913d033f3088ca5853"
+version = "0.1.6-alpha.8"
+source = "git+https://github.com/servingQ/serQ?tag=v0.1.6-alpha.8#d37635ff4fbb6af7d0c8f16b9485bac4d5bfbe7c"
 dependencies = [
  "rand",
  "serde",
