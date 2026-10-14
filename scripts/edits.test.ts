@@ -4,7 +4,7 @@
 
 import { readFileSync } from "node:fs";
 import { apply, connect, copy, declarePool, fresh, instance, remove, resize, toggle, type Draft, type Edit } from "../web/src/edit";
-import { outline as read, type Outline } from "../web/src/outline";
+import { outline as read, outputParam, type Outline } from "../web/src/outline";
 import * as snip from "../web/src/snippets";
 // @ts-ignore: wasm-bindgen's generated module
 import { draw, initSync, ir, outline } from "../web/src/wasm/serq_wasm.js";
@@ -68,7 +68,7 @@ function diff(a: string, b: string): string {
 
 const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draft => {
   const name = fresh(src, stem);
-  return { kind: "queue", name, role, family: null, text: role === "prefill" ? snip.prefill(name) : snip.decode(name), relations: [] };
+  return { kind: "queue", name, role, family: null, text: role === "prefill" ? snip.prefill(name) : snip.decode(name, undefined, outputParam(ol(src)) ?? undefined), relations: [] };
 };
 
 // vllm.sq: one engine, no queue; a decoder put before it from the arrival
@@ -81,15 +81,15 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
 // a queue no arrow reaches is not a program (serQ #617): why the palette keeps a draft
 {
   const src = example("vllm");
-  const at = src.lastIndexOf("  server {");
-  check("vllm: an engine nothing reaches", src, [{ at: [at, at], text: snip.decode("E") + "\n" }], { refused: /run by no statement/ });
+  const at = src.lastIndexOf("  server ");
+  check("vllm: an engine nothing reaches", src, [{ at: [at, at], text: snip.decode("E", undefined, outputParam(ol(src)) ?? undefined) + "\n" }], { refused: /run by no statement/ });
 }
 
 // a pool of engines (a family, `queue D[3]`): placed by an arrow, its call chooses a member
 {
   const pool = (src: string, role: "prefill" | "decode", stem: string, n: number): Draft => {
     const name = fresh(src, stem);
-    return { kind: "queue", name, role, family: String(n), text: role === "prefill" ? snip.prefill(name, n) : snip.decode(name, n), relations: [] };
+    return { kind: "queue", name, role, family: String(n), text: role === "prefill" ? snip.prefill(name, n) : snip.decode(name, n, outputParam(ol(src)) ?? undefined), relations: [] };
   };
   let src = example("vllm");
   const e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: pool(src, "decode", "E", 3) });
