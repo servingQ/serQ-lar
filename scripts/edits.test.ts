@@ -110,7 +110,7 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
 
 // vllm_nixl_push.sq
 {
-  const src = readFileSync(`${process.env.SERQ_DIR ?? "../serQ"}/examples/pd-disaggregation/vllm_nixl_push.sq`, "utf8");
+  const src = readFileSync(`${process.env.SERQ_DIR}/examples/pd-disaggregation/vllm_nixl_push.sq`, "utf8");
   const o = ol(src);
   check("push: push → pull", src, toggle(src, o, o.relations[0]), { text: ["kvt.nixl_pull (P, D"] });
 }

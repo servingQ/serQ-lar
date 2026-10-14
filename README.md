@@ -83,13 +83,14 @@ web/                Vite + TypeScript, no framework
   src/dashboard.ts    the metrics board: tiles, panels, the pool gauges
 scripts/            build-wasm.sh, sync-examples.sh, bench.mjs, check-edits.sh
 docs/               metrics.md, performance.md, upstream.md, editor.md
-SERQ_REF            the serQ commit (or tag) CI builds against
 ```
 
 ## Build
 
-Needs serQ checked out next to this repository (`../serQ`) at `SERQ_REF`,
-Rust (pinned in `rust-toolchain.toml`, with the `wasm32-unknown-unknown`
+serQ comes through Cargo: `crates/serq-wasm/Cargo.toml` names the serQ tag,
+`Cargo.lock` its commit, and `scripts/serq-dir.sh` prints where Cargo checked
+it out (the example programs are copied from there). To build against a serQ
+checkout instead, set `SERQ_DIR` to it for every step below. Needs Rust (pinned in `rust-toolchain.toml`, with the `wasm32-unknown-unknown`
 target), the `wasm-bindgen` CLI at the version in `Cargo.lock`, and Node 22.
 
 ```sh
@@ -101,12 +102,12 @@ npm run dev       # http://localhost:5173
 npm run build     # web/dist, what Pages serves
 ```
 
-`node scripts/bench.mjs 3600 ../serQ/examples/multi-turn/vllm.sq` times
+`node scripts/bench.mjs 3600 "$(scripts/serq-dir.sh)/examples/multi-turn/vllm.sq"` times
 serQ's wasm build, with and without the log ([docs/performance.md](docs/performance.md)).
 
 ## Deploy
 
-`.github/workflows/pages.yml` builds serQ at `SERQ_REF` and the site on every
+`.github/workflows/pages.yml` builds serQ at its tag and the site on every
 push to `main`. Enable Pages with source "GitHub Actions" in the repository
-settings. If serQ is private, the second checkout needs a token with read
-access to it.
+settings. If serQ turns private, Cargo needs a credential to fetch it
+(`CARGO_NET_GIT_FETCH_WITH_CLI=true` and a token for git).

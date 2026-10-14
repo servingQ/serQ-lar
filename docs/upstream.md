@@ -1,6 +1,6 @@
 # What serq-lar needs from serQ
 
-serq-lar builds against serQ as it is (`SERQ_REF`), with no fork. These are the
+serq-lar builds against serQ as it is (a tag, as a Cargo git dependency), with no fork. These are the
 changes in serQ that turn its stopgaps into the real thing, in the order they
 unblock the app. Each is a serQ issue with a Before/After (serQ's CLAUDE.md,
 Issues). Each says whether it has landed.
@@ -209,7 +209,7 @@ The page named its serQ by `serq::VERSION` (Cargo's version). serQ's
 pre-release tags do not bump it: at `v0.1.6-alpha.3` the workspace says
 `0.1.5`, so the page, `serq --version` and the report's `serq_version` all
 said 0.1.5. Stopgap: `web/vite.config.ts` names the build by
-`git describe --tags` of the serQ checkout (falling back to `SERQ_REF`),
+the serQ tag `Cargo.lock` pins (or `git describe --tags` of `SERQ_DIR`),
 and the header links to that tag on GitHub. Issue draft:
 
 > **pre-release 태그에 Cargo 버전을 맞추기**
@@ -239,3 +239,29 @@ a second list. `serq::frontend::highlight::vocabulary` gathers them, and
 (`web/src/editor.ts`), which adds the program's own names from the
 `name` pieces of `tokens()` and labels them by the outline. In serQ
 v0.1.6-alpha.4.
+
+## U13. serQ from crates.io
+
+serq-lar takes serQ as a Cargo git dependency on a tag
+(`serq = { git = "https://github.com/servingQ/serQ", tag = "v0.1.6-alpha.4" }`).
+It works, but the version is a git ref rather than a version: `cargo update`
+and `cargo tree` cannot say what is newer, and every build clones serQ's
+whole history. The release already packages the crate (`cargo package` in
+`release.yml`); it is not published. Depends on U11: crates.io takes a
+version once, so a pre-release has to carry its own. Issue draft:
+
+> **serq crate을 crates.io에 배포하기 (pre-release 포함)**
+>
+> 지금 serQ를 쓰는 Rust 쪽(serq-lar의 `serq-wasm`)은 git 태그로만 고정할 수 있다. `release.yml`이 `.crate`를 만들어 GitHub release에 붙이지만 crates.io에는 올리지 않아, 버전 범위·`cargo update`·`cargo tree`가 serQ에는 통하지 않고, 빌드마다 저장소 전체를 clone한다.
+>
+> Before (`crates/serq-wasm/Cargo.toml`):
+> ```toml
+> serq = { git = "https://github.com/servingQ/serQ", tag = "v0.1.6-alpha.4" }
+> ```
+> After:
+> ```toml
+> serq = "=0.1.6-alpha.4"
+> ```
+> 1. pre-release 태그에도 `workspace.package.version`을 태그와 같게 올린다(U11, `scripts/version.py`가 `X.Y.Z-alpha.N`을 받도록).
+> 2. `release.yml`이 `v*` 태그(pre-release 포함)에서 `cargo publish -p serq`를 한다(crates.io trusted publishing 또는 `CARGO_REGISTRY_TOKEN`). pyserq가 PyPI에 가는 것과 같은 자리.
+> 3. dev 버전(`0.1.6-dev.N`)은 crates.io에 올리지 않는다(버전을 한 번만 쓸 수 있으므로 태그만).
