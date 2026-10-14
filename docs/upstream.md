@@ -184,7 +184,12 @@ without the page reading a program's meaning from its text:
   under the bracket, carrying the copy's mark, and serQ's
   `tests/draw.rs` checks the arrows in and out of every station of every
   example and tutorial figure. The Edit view reads those arrows, so every
-  engine and NIC there has a way in and a way out.
+  engine and NIC there has a way in and a way out. Since serQ
+  [#626](https://github.com/servingQ/serQ/issues/626),
+  [#627](https://github.com/servingQ/serQ/pull/627) (v0.1.6-alpha.5),
+  `serq check` and `serq draw` hold every program to it, not only serQ's
+  examples (`deployment::checked_figure`), and so does the page's `draw`: a
+  figure that would cut a station off is serQ's diagnostic, naming it.
 - **A NIXL copy says who posts it** — landed, serQ
   [#618](https://github.com/servingQ/serQ/issues/618),
   [#619](https://github.com/servingQ/serQ/pull/619). `Run.poster` in the

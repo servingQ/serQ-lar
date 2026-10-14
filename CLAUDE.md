@@ -13,7 +13,7 @@ server, and the site must stay deployable to GitHub Pages.
   `docs/upstream.md` (as a serQ issue: Korean, Before/After, per serQ's
   CLAUDE.md).
 - **No fork of serQ.** `serq-wasm` depends on serQ by git tag
-  (`crates/serq-wasm/Cargo.toml`, `tag = "v0.1.6-alpha.4"`); `Cargo.lock`
+  (`crates/serq-wasm/Cargo.toml`, `tag = "v0.1.6-alpha.5"`); `Cargo.lock`
   pins its commit. Bump the tag, and the lock with it (`cargo metadata`),
   in the change that needs the newer serQ. It is a serQ tag, never a
   `rev`: a change that needs an untagged serQ waits for the tag, or asks

@@ -27,11 +27,12 @@ pub fn ir(src: &str) -> Result<String, JsError> {
         .map_err(|e| JsError::new(&e))
 }
 
-/// The deployment view as SVG (`serq draw`).
+/// The deployment view as SVG (`serq draw`), refused as `serq draw` refuses
+/// it when a station would have no arrow in or no arrow out (serQ #626).
 #[wasm_bindgen]
 pub fn draw(src: &str) -> Result<String, JsError> {
     let p = serq::compile_inspected(src, &overrides(None, None)).map_err(|e| JsError::new(&e))?;
-    let figure = serq::view::deployment::figure(&p);
+    let figure = serq::view::deployment::checked_figure(&p).map_err(|e| JsError::new(&e))?;
     serq::view::render(&figure, "svg").map_err(|e| JsError::new(&e))
 }
 
