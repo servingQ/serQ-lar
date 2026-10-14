@@ -50,6 +50,9 @@ jobs:
       - name: Build the site
         working-directory: serq-lar/web
         run: npm ci && npm run build
+      - name: Check the figure's edits
+        working-directory: serq-lar
+        run: ./scripts/check-edits.sh
       - uses: actions/upload-pages-artifact@v3
         with:
           path: serq-lar/web/dist

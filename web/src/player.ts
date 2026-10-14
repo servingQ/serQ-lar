@@ -18,6 +18,7 @@
 // iteration of milliseconds plays at the chosen speed.
 
 import type { Anchors, Box, Point } from "./anchors";
+import type { Camera } from "./camera";
 import { label, who, whoOf, type Log, type LogEvent, type Named } from "./events";
 
 type Mode = "prefill" | "decode" | "plain";
@@ -129,6 +130,8 @@ export class Player {
     private poolStage: Map<number, string>,
     private canvas: HTMLCanvasElement,
     public horizon: number,
+    /** The part of the figure in view: the canvas draws as the SVG shows. */
+    private camera: Camera,
   ) {
     this.ctx = canvas.getContext("2d")!;
     this.stageName = log.stages.map((s) => s.name);
@@ -619,9 +622,9 @@ export class Player {
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
     }
-    const k = (w / at.width) * dpr;
-    ctx.setTransform(k, 0, 0, k, 0, 0);
-    ctx.clearRect(0, 0, at.width, at.height);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(...this.camera.transform(dpr));
     const colours = { prefill: css("--prefill"), decode: css("--decode"), plain: css("--plain") };
     const busy = css("--busy");
     const alert = css("--alert");

@@ -33,8 +33,24 @@ declares a gauge of it (a button adds one per pool). The playhead is the
 replay's clock; a click on a panel seeks it.
 [docs/metrics.md](docs/metrics.md) lists every number and where it comes from.
 
+The figure follows the text as you type: serQ draws it again on every
+edit (a few milliseconds, in a worker of its own), and runs it once typing
+pauses, stopping a run still going for older text. Text serQ refuses keeps
+the last figure, dimmed, under serQ's diagnostic, which the editor
+(CodeMirror) underlines where serQ points. The wheel or a pinch zooms the
+figure about the pointer, a drag pans it, a double-click fits it; the
+replay zooms with it.
+
+The figure edits the text, too. + Prefill and + Decode make a draft
+engine; in Connect mode an arrow dragged from the arrival or a station to
+it writes the queue and its call into the program. Click a station for
+its instances, a NIC, a pool, the KV copy's pull or push (serQ writes
+which on the copy), a duplicate, or its removal. Every edit is text in
+the program, one step to undo, and serQ says whether it is a program
+([docs/editor.md](docs/editor.md)).
+
 The figure, the IR, the report and the log are serQ's; the page adds only the
-replay. It deploys to GitHub Pages.
+replay and the editing. It deploys to GitHub Pages.
 
 ## Layout
 
@@ -42,6 +58,13 @@ replay. It deploys to GitHub Pages.
 crates/serq-wasm/   serQ → wasm-bindgen: version, ir, draw, run, run_logged
 web/                Vite + TypeScript, no framework
   src/worker.ts       serQ in a Web Worker
+  src/serq.ts         the page's two workers: one draws, one runs and can be stopped
+  src/camera.ts       zoom and pan: the SVG's viewBox, the canvas's transform
+  src/editor.ts       the text in CodeMirror: coloured by serQ's roles, its diagnostic, undo
+  src/outline.ts      serQ's outline of the text (where things are written)
+  src/edit.ts         an edit from the figure as text, where the outline says
+  src/snippets.ts     the text the palette writes
+  src/compose.ts      the palette, the drafts, the arrows, the inspector
   src/anchors.ts      where each stage, pool, arrival and exit is in the SVG
   src/events.ts       the run log's shape (serQ's docs/reference/log.md)
   src/player.ts       replays the log on a canvas over the SVG
@@ -50,8 +73,8 @@ web/                Vite + TypeScript, no framework
   src/metrics.ts      counts the log's state over time, per window
   src/charts.ts       a panel: lines, samples, crosshair, playhead, table
   src/dashboard.ts    the metrics board: tiles, panels, the pool gauges
-scripts/            build-wasm.sh, sync-examples.sh, bench.mjs
-docs/               metrics.md, performance.md, upstream.md
+scripts/            build-wasm.sh, sync-examples.sh, bench.mjs, check-edits.sh
+docs/               metrics.md, performance.md, upstream.md, editor.md
 SERQ_REF            the serQ commit (or tag) CI builds against
 ```
 

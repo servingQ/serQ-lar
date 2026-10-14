@@ -3,7 +3,7 @@
 serq-lar builds against serQ as it is (`SERQ_REF`), with no fork. These are the
 changes in serQ that turn its stopgaps into the real thing, in the order they
 unblock the app. Each is a serQ issue with a Before/After (serQ's CLAUDE.md,
-Issues). The first two have landed; the rest are open.
+Issues). Each says whether it has landed.
 
 ## U1. A request trace from the engine — landed
 
@@ -163,3 +163,33 @@ holds them over the lexer's tokens, and `lexer::lex_partial` keeps what
 it read before an error. `tokens()` in `crates/serq-wasm` returns its
 pieces and the editor colours them (`web/src/main.ts`, `.code` in
 `web/src/style.css`). In serQ v0.1.6-alpha.3.
+## U10. Editing the deployment from the figure
+
+[editor.md](editor.md) is the plan. Three serQ changes make it possible
+without the page reading a program's meaning from its text:
+
+- **A station no request reaches does not link** — landed, serQ
+  [#616](https://github.com/servingQ/serQ/issues/616),
+  [#617](https://github.com/servingQ/serQ/pull/617). An engine, a `stage`
+  or a NIC that no run uses linked, and the figure silently left it out;
+  now it is an error at its declaration. So every station in the figure
+  has an arrow in and one out, and the page keeps a palette's engine as a
+  draft until an arrow reaches it (`scripts/edits.test.ts`, "an engine
+  nothing reaches").
+- **A NIXL copy says who posts it** — landed, serQ
+  [#618](https://github.com/servingQ/serQ/issues/618),
+  [#619](https://github.com/servingQ/serQ/pull/619). `Run.poster` in the
+  IR; the figure writes `pull ·` or `push ·` on the copy, dots the
+  poster's NIC, and marks the arrow and bracket `data-copy`,
+  `data-poster`, which the page clicks through to the toggle.
+- **An outline of the text** — serQ
+  [#614](https://github.com/servingQ/serQ/issues/614),
+  [#615](https://github.com/servingQ/serQ/pull/615). `serq::outline(src)`:
+  where each queue, member, relation, call and `use` is written, as byte
+  ranges, from a parse alone. `web/src/edit.ts` places every edit there.
+
+What the page still decides itself, as text edits next to serQ's rules
+rather than copies of them: a push wraps the source's call in `fork { … }`
+(serQ refuses a push no leg dispatches), and a copy adds the reader's
+`connector` (serQ runs no copy without one). Both are written in
+`edit.ts` with the serQ message that asks for them.

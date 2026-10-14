@@ -1,12 +1,12 @@
 // serQ runs here, off the page's thread: a run of an hour's horizon takes
 // seconds (docs/performance.md), and the page must keep animating.
 
-import init, { draw, ir, run, run_logged, tokens, version } from "./wasm/serq_wasm.js";
+import init, { draw, ir, outline, run, run_logged, tokens, version } from "./wasm/serq_wasm.js";
 import wasmUrl from "./wasm/serq_wasm_bg.wasm?url";
 
 export type Request =
   | { id: number; cmd: "version" }
-  | { id: number; cmd: "draw" | "ir" | "tokens"; src: string }
+  | { id: number; cmd: "draw" | "ir" | "outline" | "tokens"; src: string }
   /** `log`: keep the run's log, at most that many events (the report's `log`). */
   | { id: number; cmd: "run"; src: string; horizon?: number; seed?: number; log?: number };
 
@@ -24,14 +24,17 @@ self.onmessage = async (m: MessageEvent<Request>) => {
       case "version":
         value = version();
         break;
+      case "tokens":
+        value = tokens(q.src);
+        break;
       case "draw":
         value = draw(q.src);
         break;
       case "ir":
         value = ir(q.src);
         break;
-      case "tokens":
-        value = tokens(q.src);
+      case "outline":
+        value = outline(q.src);
         break;
       case "run": {
         const seed = q.seed === undefined ? undefined : BigInt(q.seed);
