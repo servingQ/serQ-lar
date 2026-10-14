@@ -25,6 +25,14 @@ run is under the figure, a table a section with the unit in each header;
 click a station or a drum (or its chip) to read one component's part of
 it, field by field.
 
+Under the figure, a metrics board lays the run out like a Prometheus
+dashboard: TTFT, TPOT and response time as p50/p90/p99 over time, tokens
+scheduled, batch size, iteration time, residents per engine, queue length
+and wait per pool, preemptions, and the pools' usage where the program
+declares a gauge of it (a button adds one per pool). The playhead is the
+replay's clock; a click on a panel seeks it.
+[docs/metrics.md](docs/metrics.md) lists every number and where it comes from.
+
 The figure, the IR, the report and the log are serQ's; the page adds only the
 replay. It deploys to GitHub Pages.
 
@@ -38,8 +46,12 @@ web/                Vite + TypeScript, no framework
   src/events.ts       the run log's shape (serQ's docs/reference/log.md)
   src/player.ts       replays the log on a canvas over the SVG
   src/report.ts       the report (serQ's docs/reference/cli.md) as tables, whole or one component's
+  src/series.ts       the report's shape, with the samples and gauge points
+  src/metrics.ts      counts the log's state over time, per window
+  src/charts.ts       a panel: lines, samples, crosshair, playhead, table
+  src/dashboard.ts    the metrics board: tiles, panels, the pool gauges
 scripts/            build-wasm.sh, sync-examples.sh, bench.mjs
-docs/               performance.md, upstream.md
+docs/               metrics.md, performance.md, upstream.md
 SERQ_REF            the serQ commit (or tag) CI builds against
 ```
 

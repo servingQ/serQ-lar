@@ -75,3 +75,73 @@ says when it did.
 - The log's `iter` could carry each request's token count, not only the
   batch's total: then a chunked prefill would show its progress, and the
   budget bar could be scaled by `tokens cap` instead of the run's peak.
+- `--json` could carry what `--dump` writes (each observation's samples
+  with their times, each gauge's change points), so that a JSON report is
+  the whole measurement. `crates/serq-wasm` builds that object itself
+  (`series`) from `Report`'s public fields, which is enough for the page.
+
+## U6. p50 and p90 in the report
+
+The metrics board ([metrics.md](metrics.md)) shows p50, p90 and p99 of
+TTFT, TPOT and the response time; serQ's observe statistics have `p99`
+only, so the page computes the other two from the samples. A dashboard's
+reader expects the three from one source. Issue draft:
+
+> **observe 통계에 p50, p90 추가**
+>
+> 보고서의 observe 통계(`count mean ci cv2 p99`)에는 p99만 있어, 서빙 대시보드가 늘 같이 보는 p50(중앙값)과 p90을 serq-lar가 샘플에서 따로 계산한다. 같은 분포의 세 분위수가 두 곳에서 나오면 반올림 규칙이 달라 어긋날 수 있다(serQ의 p99는 0.5 % 이내 근사, 페이지는 nearest rank). 스테이지의 ITL에는 이미 `itl_p50`이 있다.
+>
+> Before (`serq run examples/multi-turn/vllm.sq --horizon 30 --json | jq .client.ttft`):
+> ```json
+> {"count":19,"mean":0.017764404358906388,"ci":null,"cv2":0.7742012442628255,"p99":0.05352000000000068}
+> ```
+> After:
+> ```json
+> {"count":19,"mean":0.017764404358906388,"ci":null,"cv2":0.7742012442628255,"p50":0.012139999999998707,"p90":0.040859999999998564,"p99":0.05352000000000068}
+> ```
+> (After의 p50, p90은 같은 샘플을 nearest rank로 잰 값이다; serQ의 분위수 추정 규칙으로 바뀔 수 있다.) 텍스트 보고서의 observe 표에도 같은 두 열. `REPORT_VERSION`은 필드 추가라 그대로.
+
+## U7. A pool's `used` over time, without a gauge
+
+KV cache usage over time is the metric a serving dashboard leads with, and
+the page can show it only when the program declares a `gauge` of `used`:
+the log carries no units (`log.md`, *Not in version 0*) and the report a
+pool's `mean_used`. The board's stopgap appends `gauge used_kv = used(kv);`
+lines to the program (visible, checked against every example). The
+interpreter integrates `used` over time for `mean_used` already, so it has
+the change points. Issue draft:
+
+> **pool의 `used` 변화를 보고서가 그대로 내놓기**
+>
+> `mean_used`를 적분하느라 인터프리터는 pool의 `used`가 바뀌는 시점을 모두 지나가지만 보고서에는 시간 평균만 남는다. KV 캐시 사용량의 시간 변화는 프로그램이 `gauge used_kv = used(kv);`를 선언해야만 나오고, serq-lar는 그 줄을 프로그램에 덧붙여 다시 돌린다.
+>
+> Before (serq-lar가 `examples/multi-turn/vllm.sq`에 덧붙이는 줄):
+> ```serq
+>   // serq-lar: pool usage, one gauge per pool
+>   gauge used_kv = used(kv);
+>   gauge used_reqs = used(reqs);
+> ```
+> After: 선언 없이 `Report::pools[i].used: Vec<(f64, f64)>`(gauge의 `points`와 같은 꼴), `--dump DIR`이 `pool/kv.used.csv`(`time,value`)를 쓴다. `cached`도 같은 자리에서 같이(`cached(p)` 관측 함수가 없어 gauge로는 못 잰다). 보고서 JSON과 텍스트는 그대로.
+
+## U8. Inter-token gaps with their times
+
+The report has a stage's `mean_itl`, `itl_p50` and `itl_p99` over the whole
+run; the board cannot chart ITL over time, and the gaps' rule (one session
+and turn, across stages, a prefill's end after a decode or a preemption)
+is serQ's to apply, not the page's to repeat from the log. Issue draft:
+
+> **ITL 샘플을 시각과 함께 `Report`에 남기기**
+>
+> 스테이지 통계의 `mean_itl`, `itl_p50`, `itl_p99`는 전체 구간의 값이고, 토큰 간격 샘플 자체는 집계 뒤 버려진다. 시간에 따른 ITL(부하가 몰릴 때 간격이 벌어지는 모습)을 그리려면 샘플과 시각이 필요하다.
+>
+> Before (`src/engine/report.rs`):
+> ```rust
+>     pub mean_itl: f64,
+> ```
+> After:
+> ```rust
+>     pub mean_itl: f64,
+>     /// `(time, gap)` of every inter-token gap ending on this stage after warm-up.
+>     pub itl: Vec<(f64, f64)>,
+> ```
+> `--dump DIR`이 `stage/<name>.itl.csv`를 쓴다. JSON은 그대로(샘플은 `--dump`의 몫, U5의 둘째 항목과 같은 선).
