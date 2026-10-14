@@ -408,3 +408,45 @@ to the wrong place without an error. Issue draft:
 > <text x="252" y="159" … class="dim" data-from="#0" data-to="P" data-role="label">remote_prefill</text>
 > ```
 > `figure::Item::Text`에 무엇의 글자인지(노드, 풀, 화살표, 인스턴스, 도착)와 역할(name, note, label)을 담는 필드를 두고, `deployment.rs`의 `f.text`/`f.note` 호출(20곳)이 채우며, `svg.rs`가 drum·화살표와 같은 이름의 `data-*`로 적는다. U15(인스턴스 패널의 `data-nodes`)와 함께 하면 Flow view가 그림을 위치로 읽는 곳이 없어진다. `tests/draw.rs`에 예제마다 모든 `<text>`가 그림의 노드·풀·화살표를 가리키는지 확인하는 검사를 둔다.
+
+## U20. The client and the server in the deployment view
+
+The Flow view draws the workload as one client and the deployment as one
+server, since serQ takes one `workload` and one `server` a program
+(`duplicate workload`, `duplicate server`). serQ's figure draws the
+arrival arrow from the page's edge and each exit to an `out` of its own,
+and nothing around the server. Stopgaps in `web/src/flow/graph.ts`
+(`CLIENT`: the arrival and the exits joined in one node, each exit a
+reply back into it) and `web/src/flow/EditView.tsx` (`ServerNode`: a
+frame around all but the client). Extends U3's "no source and sink".
+Issue draft:
+
+> **배포 그림에 client와 server를 그리기**
+>
+> 배포 그림은 도착 화살표를 그림 가장자리에서 시작하고, exit마다 `out`으로 끝낸다. 워크로드(client)도, server의 경계도 그리지 않는다. 그런데 serQ는 프로그램마다 `workload`와 `server`를 하나씩만 받으므로(`duplicate workload`, `duplicate server`) 둘 다 그림의 한 자리로 그릴 수 있다.
+>
+> Before: `<path data-role="arrival" data-to="#0">`, `<path data-role="exit" data-from="D">` … `out`
+> After: `<g data-node="client" data-role="client">`(도착은 client에서 나가고, exit는 응답으로 client에 돌아온다: `data-to="client"`), `<rect data-role="server">`(client를 뺀 전부를 감싸는 틀). tool 시간과 think 시간은 client에 있다.
+
+## U21. A router's choice and the workload's statements in the outline
+
+The inspector edits a router's keys and the client's properties where
+the text writes them. serQ's outline placed neither: serQ
+[#640](https://github.com/servingQ/serQ/issues/640),
+[#641](https://github.com/servingQ/serQ/pull/641) add `chooses` (a
+`choose`'s variable, count, each key, its block) and `workload_items`
+(`arrive`, `set`, `send`, `tool`, … with their values). Until a serQ tag
+has them, `web/src/inspect.ts` shows serQ's words and sends the edit to
+Code.
+
+## U22. The rules serq-lar knows in serQ's place
+
+The Flow view's edits know rules of serQ's that serQ says only by
+refusing the result, or not at all: a NIC carries a copy, a copy's ends
+are both families or both plain, one KV pool a device, a pool takes a
+capacity, a push forks the source's call, a reader's connector, what an
+instance is, which keys a `choose` takes, where a pool admits. serQ
+[#645](https://github.com/servingQ/serQ/issues/645) asks serQ to own
+them: a code and a fix-it on each diagnostic, and queries in the outline
+(instances, a device's KV pool, capacities, what each stage takes, role
+templates, a `choose`'s keys). serq-lar keeps only how each is shown.

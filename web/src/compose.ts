@@ -4,7 +4,7 @@
 // engine clicked takes a role, a KV copy clicked a mode. Every change is an
 // edit of the text (edit.ts), which serQ then draws again.
 
-import { apply as _apply, connect, copy, declarePool, engineRole, fresh, instance, remove, retype, toggle, type Draft, type Edit, type From, type To } from "./edit";
+import { apply as _apply, connect, copy, declarePool, engineRole, fresh, instance, remove, retype, route, toggle, type Draft, type Edit, type From, type To } from "./edit";
 import { outputParam, type Outline } from "./outline";
 import * as snip from "./snippets";
 import type { Role } from "./snippets";
@@ -116,6 +116,17 @@ export class Compose {
         (others.length ? `; ${others.join(", ")} too, at the other end of its KV copy (serQ copies between two families)` : "") +
         `; how many is written in the text, \`queue ${name}[1]\`. Ctrl+Z undoes it.`,
     );
+  }
+
+  /** Route a station's calls through the router (edit.ts `route`): each chooses a member of its queue. */
+  routeTo(stage: string) {
+    const ol = this.host.outline();
+    if (!ol) return this.host.say("serQ cannot read the text as it is: fix it first.", true);
+    const name = stage.replace(/\.nic$/, "");
+    const edits = route(this.host.text(), ol, name);
+    if (typeof edits === "string") return this.host.say(edits, true);
+    this.host.apply(edits);
+    this.host.say(`The router chooses a member of ${name} for each call to it, by the least work; click the router to change how. Ctrl+Z undoes it.`);
   }
 
   /** Declare a memory pool in a station's queue, with its capacity: request slots on its engine, or KV blocks on its device. */

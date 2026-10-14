@@ -2,10 +2,11 @@ import "./style.css";
 import { EditorView } from "@codemirror/view";
 import { anchors, type Anchors } from "./anchors";
 import { Compose } from "./compose";
-import type { Draft, From, To } from "./edit";
+import type { Draft, Edit, From, To } from "./edit";
+import { clientOf, routerOf } from "./inspect";
 import { Dashboard, withGauges } from "./dashboard";
 import { Editor } from "./editor";
-import { graphOf, SINK, SOURCE, draftId, type Graph } from "./flow/graph";
+import { CLIENT, graphOf, draftId, type Graph } from "./flow/graph";
 import type { EditHost, ReplaySurface } from "./flow/EditView";
 import { flowAnchors } from "./flow/replay";
 import { family, type Log } from "./events";
@@ -401,7 +402,7 @@ const tabInk = document.querySelector<HTMLSpanElement>(".tab-ink")!;
 
 /** A node of the Edit view as an end of an arrow: the arrival (or the router's decision, the start of the way), a station, or a draft. */
 function endOf(id: string): { from?: From; to?: To; nic?: Draft } {
-  if (id === SOURCE || id.startsWith("#")) return { from: { kind: "arrival" } };
+  if (id === CLIENT || id.startsWith("#")) return { from: { kind: "arrival" } };
   const d = compose.draftList.find((_, i) => draftId(i) === id);
   if (d) return d.kind === "nic" ? { nic: d } : { to: { kind: "draft", draft: d } };
   // a member of a stacked instance (`P[1]`) is written as its array
@@ -411,8 +412,8 @@ function endOf(id: string): { from?: From; to?: To; nic?: Draft } {
 
 const editHost: EditHost = {
   connect(from, to) {
-    if (to === SINK) return void sayIt("A session leaves where its way ends: serQ draws the exit, nothing to connect.", true);
-    if (to.startsWith("#") || to === SOURCE) return void sayIt("An arrow ends at a station or a draft.", true);
+    if (to === CLIENT) return void sayIt("A reply goes back to the client where its way ends: serQ draws it, nothing to connect.", true);
+    if (to.startsWith("#")) return void sayIt("An arrow ends at a station or a draft.", true);
     const a = endOf(from);
     const b = endOf(to);
     if (!b.to) return void sayIt("A NIC's draft starts a copy: draw its arrow to the queue that reads.", true);
@@ -420,7 +421,7 @@ const editHost: EditHost = {
     compose.link(a.from ?? null, b.to, a.nic);
   },
   select(id) {
-    const station = id && !id.startsWith("#") && id !== SOURCE && id !== SINK && !id.startsWith("draft:") ? family(id) : null;
+    const station = id && !id.startsWith("#") && id !== CLIENT && !id.startsWith("draft:") ? family(id) : null;
     // its part of the run's report, under the view
     selected = station ? { kind: "stage", name: station } : null;
     showReport();
@@ -449,6 +450,15 @@ const editHost: EditHost = {
     const d = compose.add(part.kind);
     return { draft: d, id: draftId(compose.draftList.indexOf(d)) };
   },
+  routeTo: (id) => compose.routeTo(family(id)),
+  inspect(id) {
+    if (!currentOutline) return null;
+    const apply = (edits: Edit[]) => editor.apply(edits);
+    if (id === CLIENT) return clientOf(currentOutline, editor.text, shownGraph?.nodes.find((n) => n.id === CLIENT)?.sub ?? "", apply);
+    if (!id.startsWith("#")) return null;
+    const pools = drawnFrom ? ((JSON.parse(drawnFrom.ir) as { pools?: { name: string; block: number | null }[] }).pools ?? []) : [];
+    return routerOf(currentOutline, editor.text, new Set(pools.filter((p) => p.block !== null).map((p) => p.name)), apply);
+  },
   code(id) {
     const at = currentOutline && codeOf(currentOutline, family(id));
     if (!at) return void sayIt(`${id} is not written as such in the text: serQ's outline does not place it.`, true);
@@ -458,8 +468,12 @@ const editHost: EditHost = {
   },
 };
 
-/** Where a node of the Edit view is written: a queue, its NIC, or a declaration (a delay). */
+/** Where a node of the Edit view is written: the client's workload, the
+ * router's first choice (else its gateway's route, else the server), a
+ * queue, its NIC, or a declaration (a delay). */
 function codeOf(ol: Outline, id: string): [number, number] | null {
+  if (id === CLIENT) return ol.workload;
+  if (id.startsWith("#")) return ol.chooses?.find((c) => c.block !== "entry")?.range ?? ol.routes[0]?.range ?? ol.server?.range ?? null;
   const nic = id.endsWith(".nic");
   const q = ol.queues.find((x) => x.name === id.replace(/\.nic$/, ""));
   if (q) return (nic && q.members.find((m) => m.kind === "nic")?.range) || q.range;

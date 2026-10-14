@@ -20,6 +20,8 @@ export interface Obstacle {
   y: number;
   w: number;
   h: number;
+  /** Its input underneath rather than on its left: the client's, which each reply comes back into. */
+  in?: "bottom";
 }
 
 export interface Wire {
@@ -40,6 +42,7 @@ interface Avoid {
   OrthogonalRouting: number;
   ConnDirLeft: number;
   ConnDirRight: number;
+  ConnDirDown: number;
   shapeBufferDistance: number;
   idealNudgingDistance: number;
   nudgeOrthogonalSegmentsConnectedToShapes: number;
@@ -64,7 +67,7 @@ export function avoid(): Promise<Avoid> {
 const OUT = 1;
 const IN = 2;
 
-/** Each wire's route, from its source's right edge to its target's left edge. */
+/** Each wire's route, from its source's right edge to its target's left edge (or its foot). */
 export function route(A: Avoid, nodes: Obstacle[], wires: Wire[]): Map<string, Point[]> {
   const r = new A.Router(A.OrthogonalRouting);
   // a clearance around each node, and the spacing of arrows that would share a line
@@ -81,7 +84,8 @@ export function route(A: Avoid, nodes: Obstacle[], wires: Wire[]): Map<string, P
     const s = new A.ShapeRef(r, keep(new A.Rectangle(keep(new A.Point(n.x, n.y)), keep(new A.Point(n.x + n.w, n.y + n.h)))));
     // a pin many arrows may share: libavoid's pins are exclusive unless told otherwise
     new A.ShapeConnectionPin(s, OUT, 1, 0.5, true, 0, A.ConnDirRight).setExclusive(false);
-    new A.ShapeConnectionPin(s, IN, 0, 0.5, true, 0, A.ConnDirLeft).setExclusive(false);
+    if (n.in === "bottom") new A.ShapeConnectionPin(s, IN, 0.5, 1, true, 0, A.ConnDirDown).setExclusive(false);
+    else new A.ShapeConnectionPin(s, IN, 0, 0.5, true, 0, A.ConnDirLeft).setExclusive(false);
     shapes.set(n.id, s);
   }
   const conns: [string, InstanceType<Avoid["ConnRef"]>][] = [];

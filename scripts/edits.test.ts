@@ -3,7 +3,7 @@
 // (esbuild bundles this file for Node, with serQ's wasm).
 
 import { readdirSync, readFileSync } from "node:fs";
-import { apply, connect, copy, declarePool, fresh, instance, remove, resize, retype, toggle, type Draft, type Edit } from "../web/src/edit";
+import { apply, connect, copy, declarePool, fresh, instance, remove, resize, retype, route, toggle, type Draft, type Edit } from "../web/src/edit";
 import { outline as read, outputParam, type Outline } from "../web/src/outline";
 import * as snip from "../web/src/snippets";
 // @ts-ignore: wasm-bindgen's generated module
@@ -169,6 +169,17 @@ const queueDraft = (src: string, role: snip.Own, stem: string): Draft => {
   if (typeof e !== "string") {
     src = apply(src, e);
     check("palette: P without a NIC", src, instance(src, ol(src), "P"), { refused: /no NIC/ });
+    // the router dropped on it: no NIC wanted, P a family of one its call chooses from
+    check("router: P a family of one", src, route(src, ol(src), "P"), { stages: ["P"], text: ["in 1 by (work(P["] });
+  }
+  check("router: llmd's D is routed already", l, route(l, ol(l), "D"), { refused: /chooses its member already/ });
+  // a pool of engines the palette makes: its call chooses a member already
+  const E = fresh(v, "E");
+  const d: Draft = { kind: "queue", name: E, role: "decode", family: "3", text: snip.decode(E, 3, outputParam(ol(v)) ?? undefined), relations: [] };
+  const f = connect(v, ol(v), { kind: "arrival" }, { kind: "draft", draft: d });
+  if (typeof f !== "string") {
+    const s = apply(v, f);
+    check("router: the palette's pool is routed already", s, route(s, ol(s), E), { refused: /already/ });
   }
 }
 

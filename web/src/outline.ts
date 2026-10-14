@@ -53,6 +53,29 @@ export interface Call {
   owner?: string;
 }
 
+/** A `choose` statement: a router's pick of a family's member. */
+export interface Choose {
+  /** Its variable (`j`), what it is chosen among (`ND`), each key of `by (…)`, and the parenthesised list. */
+  var: string;
+  count: Range;
+  keys: Range[];
+  by: Range;
+  /** The statement, to its `;`. */
+  range: Range;
+  block: "server" | "route" | "entry";
+  owner?: string;
+}
+
+/** A statement of the workload: its arrival process, a turn's draw, a tool call. */
+export interface WorkloadItem {
+  kind: string;
+  name?: string;
+  block: "workload" | "init" | "turn" | "session";
+  /** The expression: `poisson(Lambda)`, a set's value, a tool's time. */
+  value: Range | null;
+  range: Range;
+}
+
 /** The server's signature: what a request carries, and its reply. */
 export interface Signature {
   params: { name: string; hidden: boolean }[];
@@ -71,6 +94,9 @@ export interface Outline {
   signature?: Signature | null;
   workload: Range | null;
   calls: Call[];
+  /** Absent before serQ's outline said them (docs/upstream.md U21). */
+  chooses?: Choose[];
+  workload_items?: WorkloadItem[];
 }
 
 /** The outline serQ wrote for `src`, its byte offsets made string indices. */

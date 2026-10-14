@@ -490,6 +490,29 @@ export function instance(src: string, ol: Outline, q: string): Edit[] | string {
   if (!Q.members.some((m) => m.kind === "engine")) return `queue \`${q}\` has no engine to make an instance of`;
   if (!Q.members.some((m) => m.kind === "nic")) return `\`${q}\` has no NIC to bundle: draw a KV transfer from it first, then make the instance`;
   if (Q.family) return `\`${q}[${Q.family}]\` is a family with its NIC already: serQ draws its instance when its calls choose a member (\`choose k in … ; ${q}[k]…\`)`;
+  return route(src, ol, q);
+}
+
+/** Route queue `q`'s calls through a router: each call chooses a member of
+ * its family (`choose k in ND by (work(D[k])); D[k].decode (…);`), by the
+ * least work until the router is given other keys. A plain queue becomes a
+ * family of one; so does the queue at a KV copy's other end, by a variable
+ * of its own, since serQ runs a copy between two families or two queues. */
+export function route(src: string, ol: Outline, q: string): Edit[] | string {
+  const Q = ol.queues.find((x) => x.name === q);
+  if (!Q) return `\`${q}\` is no queue: a router chooses among a queue's members`;
+  if (Q.family) {
+    const calls = callsOf(ol, q).filter((c) => c.index === null);
+    if (!calls.length) return `every call to \`${q}\` chooses its member already: click the router to change how`;
+    const v = freshVar(src);
+    const edits: Edit[] = [];
+    for (const c of calls) {
+      if (src.slice(c.range[0], c.range[0] + q.length) !== q) return `a call to \`${q}\` is not written as \`${q}.…\`: edit it in the text`;
+      edits.push(before(src, c.range[0], `choose ${v} in ${Q.family} by (work(${q}[${v}]));`));
+      edits.push({ at: [c.range[0], c.range[0] + q.length], text: `${q}[${v}]` });
+    }
+    return edits;
+  }
   const ends = [Q, ...ol.relations.flatMap((r) => (r.source === q ? [r.reader] : r.reader === q ? [r.source] : [])).map((n) => ol.queues.find((x) => x.name === n)!)].filter(
     (x, i, all) => x && !x.family && all.indexOf(x) === i,
   );

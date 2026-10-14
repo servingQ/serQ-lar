@@ -10,9 +10,13 @@
 // dragged and dropped, never clicked: an engine on the canvas is a draft
 // where it lands, on a station called by it; a memory pool on an engine is
 // declared there; an arrow or a KV transfer on a station starts there, and
-// the station clicked next is its other end. An engine clicked is made
-// aggregated, a prefiller or a decoder on its toolbar, a KV
-// transfer clicked a pull or a push. The run plays over it (replay.ts): a
+// the station clicked next is its other end; the router on an engine routes
+// its calls. An engine clicked is made aggregated, a prefiller or a decoder
+// on its toolbar, a KV transfer clicked a pull or a push. The client (the
+// workload) and the router are icons; clicked, their properties open in the
+// inspector on the right, each written back into the text where serQ's
+// outline places it (inspect.ts). A frame holds the server; a NIC stands on
+// its instance's edge. The run plays over it (replay.ts): a
 // canvas above the nodes and edges, under the panels, which the page's
 // player draws on.
 
@@ -48,7 +52,8 @@ import type { Draft } from "../edit";
 import type { View } from "../player";
 import type { Role } from "../snippets";
 import { family } from "../events";
-import { type Graph, type GraphInstance, type GraphNode, SINK, SOURCE, nicOf } from "./graph";
+import type { Inspect, Prop, Section } from "../inspect";
+import { CLIENT, type Graph, type GraphInstance, type GraphNode, nicOf, queueOfNic } from "./graph";
 import { flowTransform, type Placed, toAnchor } from "./replay";
 import { avoid, labelAt, type Point, pathOf, route } from "./route";
 
@@ -83,6 +88,10 @@ export interface EditHost {
   report(pool: string): void;
   /** The nodes moved, were measured, or their arrows were drawn again: the replay is placed again. */
   placed(): void;
+  /** What the inspector shows for the router (a decision, `#0`) or the client, as the text writes it now. */
+  inspect(id: string): Inspect | null;
+  /** The router dropped on a station: its calls choose a member of its queue. */
+  routeTo(id: string): void;
 }
 
 /** What the replay draws over the Flow view with: its canvas, the viewport,
@@ -102,7 +111,7 @@ export type Part = { kind: "engine" | "delay" };
  * memory pool, on an engine; an arrow (a call) or a KV transfer (pulled,
  * until it is clicked and made a push), from a station, to the station
  * clicked next. */
-type Tool = { kind: "node"; part: Part } | { kind: "memory"; pool: "blocks" | "slots" } | { kind: "arrow"; arrow: Arrow };
+type Tool = { kind: "node"; part: Part } | { kind: "memory"; pool: "blocks" | "slots" } | { kind: "arrow"; arrow: Arrow } | { kind: "router" };
 type Arrow = "call" | "kv";
 
 /** The type a part is dragged as: the canvas takes nothing else. */
@@ -110,9 +119,9 @@ const PART = "application/x-serq-part";
 
 /** Whether node `n` takes tool `t` dropped on it. */
 function takes(t: Tool, n: GraphNode): boolean {
-  if (t.kind === "node") return n.kind !== "sink" && n.kind !== "draft";
-  if (t.kind === "memory") return n.kind === "engine";
-  if (t.arrow === "call") return n.kind !== "sink" && n.kind !== "draft" && n.kind !== "nic";
+  if (t.kind === "node") return n.kind !== "draft";
+  if (t.kind === "memory" || t.kind === "router") return n.kind === "engine";
+  if (t.arrow === "call") return n.kind !== "draft" && n.kind !== "nic";
   return n.kind === "engine" || n.kind === "nic";
 }
 
@@ -126,7 +135,10 @@ const Host = createContext<EditHost | null>(null);
 
 type SerqNodeT = Node<{ node: GraphNode; nic?: boolean }, "serq">;
 type InstanceNodeT = Node<{ instance: GraphInstance }, "instance">;
-type FlowNode = SerqNodeT | InstanceNodeT;
+/** The server's frame: one a program, around everything but the client. */
+type ServerNodeT = Node<Record<string, never>, "server">;
+type FlowNode = SerqNodeT | InstanceNodeT | ServerNodeT;
+const SERVER = "server";
 
 /** A node: serQ's name and kind and its note, an input on its left and an
  * output on its right, and the memory pools it holds. A station has a lane
@@ -137,10 +149,27 @@ function SerqNode({ id, data, parentId, selected }: NodeProps<SerqNodeT>) {
   const host = useContext(Host)!;
   const n = data.node;
   const nicDraft = n.kind === "draft" && n.draft?.kind === "nic";
-  const input = n.kind !== "source" && !nicDraft;
-  const output = n.kind !== "sink" && (n.kind !== "draft" || nicDraft);
+  const input = !nicDraft;
+  const output = n.kind !== "draft" || nicDraft;
   const station = n.kind === "engine" || n.kind === "nic" || n.kind === "station" || n.kind === "delay";
   const role = n.kind === "engine" || n.draft?.kind === "queue" ? host.role(id) : null;
+  if (n.kind === "client" || n.kind === "decision") return <IconNode n={n} />;
+  if (n.kind === "nic")
+    return (
+      <div className={`fnode k-nic dock-${n.dock ?? "right"}`} title={[n.title ?? n.label, n.sub, n.note, "an add-on of its queue's instance: the link its KV copies take"].filter(Boolean).join("\n")}>
+        <Handle type="target" position={Position.Left} />
+        <div className="fhead">
+          <b>{n.title ?? n.label}</b>
+          <span className="fcount" aria-live="off" />
+        </div>
+        {n.note && <small className="fnote">{n.note}</small>}
+        <div className="flane" aria-hidden="true" />
+        <Handle type="source" position={Position.Right} />
+        <NodeToolbar isVisible={!!selected} position={Position.Top} className="ftools">
+          <CodeButton id={id} />
+        </NodeToolbar>
+      </div>
+    );
   return (
     <div className={`fnode k-${n.kind}${role ? ` r-${role}` : ""}`} title={[n.title ?? n.label, n.sub, n.note].filter(Boolean).join("\n")}>
       {input && <Handle type="target" position={Position.Left} />}
@@ -185,7 +214,7 @@ function SerqNode({ id, data, parentId, selected }: NodeProps<SerqNodeT>) {
         </ul>
       ) : null}
       {output && <Handle type="source" position={Position.Right} />}
-      {n.kind !== "source" && n.kind !== "sink" && n.kind !== "decision" && !nicDraft && (
+      {!nicDraft && (
         <NodeToolbar isVisible={!!selected} position={Position.Top} className="ftools">
           {role && <RoleSwitch id={id} role={role} />}
           {n.kind === "engine" && !parentId && (
@@ -197,6 +226,48 @@ function SerqNode({ id, data, parentId, selected }: NodeProps<SerqNodeT>) {
         </NodeToolbar>
       )}
     </div>
+  );
+}
+
+/** The client and a router: an icon with serQ's words under it. The client
+ * sends on its right and takes each reply back underneath; a router takes
+ * a request on its left and sends it on, to the member it chooses, on its
+ * right. Clicked, its properties open in the inspector. */
+function IconNode({ n }: { n: GraphNode }) {
+  const client = n.kind === "client";
+  const what = client ? "client" : "router";
+  return (
+    <div className={`ficon k-${what}`} title={`${[client ? "client: the workload" : `router: ${n.label}`, client ? n.sub : n.note].filter(Boolean).join("\n")}\n(click: its properties)`}>
+      <Handle type="target" position={client ? Position.Bottom : Position.Left} />
+      <span className="ficon-glyph" aria-hidden="true">
+        {client ? <ClientGlyph /> : <RouterGlyph />}
+      </span>
+      <b>{what}</b>
+      <small>{client ? n.sub : n.label}</small>
+      <Handle type="source" position={Position.Right} />
+    </div>
+  );
+}
+
+/** A router: a box with the arrows it sends out four ways. */
+function RouterGlyph() {
+  return (
+    <svg viewBox="0 0 32 32" width="30" height="30">
+      <circle cx="16" cy="16" r="13" fill="var(--raised)" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M16 6v7M16 26v-7M6 16h7M26 16h-7" stroke="currentColor" strokeWidth="1.6" fill="none" />
+      <path d="M13.5 8.5 16 6l2.5 2.5M13.5 23.5 16 26l2.5-2.5M8.5 13.5 6 16l2.5 2.5M23.5 13.5 26 16l-2.5 2.5" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** The client: a screen on a stand. */
+function ClientGlyph() {
+  return (
+    <svg viewBox="0 0 32 32" width="30" height="30">
+      <rect x="4" y="6" width="24" height="16" rx="2" fill="var(--raised)" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M12 27h8M16 22v5" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+      <path d="M9 12h10M9 16h6" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" opacity="0.6" />
+    </svg>
   );
 }
 
@@ -251,6 +322,12 @@ function Parts() {
       ],
     },
     {
+      title: "Routing",
+      items: [
+        { key: "router", label: "Router", hint: "on an engine", title: "The router: drop it on an engine and each call to it chooses a member of its queue, by the least work; click the router to choose by what", tool: { kind: "router" } },
+      ],
+    },
+    {
       title: "Arrows",
       items: [{ key: "call", label: "Call", hint: "on a station, then click", title: "An arrow: the station dropped on calls the one clicked next", tool: { kind: "arrow", arrow: "call" } }],
     },
@@ -288,6 +365,123 @@ function Parts() {
   );
 }
 
+/** The inspector, on the right: the router's or the client's properties as
+ * the text writes them, each written back as it is changed (Enter, or
+ * leaving the field). `graph` is only there so that it reads the text again
+ * after every redraw. */
+function Inspector({ id, close }: { id: string; graph: Graph | null; close: () => void }) {
+  const host = useContext(Host)!;
+  const it = host.inspect(id);
+  if (!it) return null;
+  return (
+    <aside className="finspect" aria-label={`${it.title}: its properties`}>
+      <header>
+        <span className={`ficon-glyph k-${it.kind}`} aria-hidden="true">
+          {it.kind === "client" ? <ClientGlyph /> : <RouterGlyph />}
+        </span>
+        <div>
+          <b>{it.title}</b>
+          <small>{it.sub}</small>
+        </div>
+        <button className="fx" onClick={close} title="Close" aria-label="Close">
+          ×
+        </button>
+      </header>
+      {it.sections.map((s, i) => (
+        <InspectSection key={`${s.title}:${i}`} s={s} />
+      ))}
+      <footer>
+        <button onClick={() => host.code(id)} title="Show where it is written, in the Code tab">
+          {"</>"} Code
+        </button>
+      </footer>
+    </aside>
+  );
+}
+
+function InspectSection({ s }: { s: Section }) {
+  return (
+    <section>
+      <h3 className="eyebrow">{s.title}</h3>
+      {s.target && (
+        <label className="frow">
+          <span>to</span>
+          <select value={s.target.value} onChange={(e) => s.target!.set(e.target.value)} title="The family whose member it chooses: its calls go to that member">
+            {[...new Set([s.target.value, ...s.target.options])].map((f) => (
+              <option key={f}>{f}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {s.props.map((p, i) => (
+        <PropRow key={`${i}:${p.value}`} p={p} />
+      ))}
+      {s.add && <AddKey add={s.add} />}
+      {s.note && <p className="fnote-s">{s.note}</p>}
+    </section>
+  );
+}
+
+/** A property: its text, written back when changed; a preset picked writes it at once. */
+function PropRow({ p }: { p: Prop }) {
+  const [v, setV] = useState(p.value);
+  const commit = () => v.trim() && v !== p.value && p.set?.(v.trim());
+  return (
+    <div className="frow">
+      <span>{p.label}</span>
+      {p.set ? (
+        <input
+          value={v}
+          spellCheck={false}
+          onChange={(e) => setV(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setV(p.value);
+          }}
+          aria-label={p.label}
+        />
+      ) : (
+        <code>{p.value}</code>
+      )}
+      {p.presets?.length ? (
+        <select className="fpreset" value="" onChange={(e) => e.target.value && p.set?.(e.target.value)} aria-label={`${p.label}: a ready-made one`} title="A ready-made one">
+          <option value="">…</option>
+          {p.presets.map((x) => (
+            <option key={x.value} value={x.value}>
+              {x.label}
+            </option>
+          ))}
+        </select>
+      ) : null}
+      {p.remove && (
+        <button className="fx" onClick={p.remove} title="Remove this key" aria-label={`Remove ${p.label}`}>
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** A key added after the last: a ready-made one, or typed. */
+function AddKey({ add }: { add: NonNullable<Section["add"]> }) {
+  const [v, setV] = useState("");
+  return (
+    <div className="frow fadd">
+      <span>+ key</span>
+      <input value={v} placeholder="a key, or pick one" spellCheck={false} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && v.trim() && add.put(v.trim())} aria-label="A new key" />
+      <select className="fpreset" value="" onChange={(e) => e.target.value && add.put(e.target.value)} aria-label="A ready-made key">
+        <option value="">…</option>
+        {add.presets.map((x) => (
+          <option key={x.value} value={x.value}>
+            {x.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 /** An instance: serQ's panel around an engine and its NIC, with serQ's words over it. */
 function InstanceNode({ data }: NodeProps<InstanceNodeT>) {
   const i = data.instance;
@@ -299,7 +493,16 @@ function InstanceNode({ data }: NodeProps<InstanceNodeT>) {
     </div>
   );
 }
-const nodeTypes = { serq: SerqNode, instance: InstanceNode };
+/** The server: a frame around the router and the engines, where the client's requests go.
+ * Stopgap: serQ's figure draws no frame for the server; docs/upstream.md U20 asks it to. */
+function ServerNode() {
+  return (
+    <div className="fserver" aria-hidden="true">
+      <span>server</span>
+    </div>
+  );
+}
+const nodeTypes = { serq: SerqNode, instance: InstanceNode, server: ServerNode };
 
 /** An arrow along libavoid's route; until libavoid has loaded, React Flow's
  * own step path. serQ's words on it stand over its middle, a line each; a
@@ -362,6 +565,10 @@ const HEAD = 20;
 const FOOT = 30;
 /** Between two panels one over the other. */
 const GAP_Y = 24;
+/** The server's frame: its margin around what it holds (clear of a docked
+ * NIC, which stands half out of its panel), and the band its name takes. */
+const SPAD = 46;
+const SHEAD = 6;
 
 type Layout = Record<string, { x: number; y: number }>;
 function load(key: string): Layout {
@@ -419,16 +626,22 @@ const sizeOf = (n: FlowNode) => ({ w: n.measured?.width ?? W, h: n.measured?.hei
  * one above it (a stacked instance's members, `P[1]` under `P[0]`, once
  * their cards are measured) goes down clear of it, its members with it.
  * Instances come first: React Flow wants a parent before its children. */
-function fit(nodes: FlowNode[], abs: (n: SerqNodeT) => { x: number; y: number }): FlowNode[] {
+function fit(all: FlowNode[], abs: (n: SerqNodeT) => { x: number; y: number }): FlowNode[] {
+  const nodes = all.filter((n) => n.type !== "server");
   const groups = nodes.filter((n): n is InstanceNodeT => n.type === "instance");
   const at = new Map<string, { x: number; y: number }>();
   const out: FlowNode[] = [];
+  const isNic = (n: FlowNode) => n.type === "serq" && n.data.node.kind === "nic";
   const rects = groups.map((g) => {
-    const members = nodes.filter((n): n is SerqNodeT => n.type === "serq" && g.data.instance.members.includes(n.id));
+    // a NIC stands on its panel's edge, not in it: the panel is its engine's and pools'
+    const inside = nodes.filter((n): n is SerqNodeT => n.type === "serq" && g.data.instance.members.includes(n.id));
+    const members = inside.some((n) => !isNic(n)) ? inside.filter((n) => !isNic(n)) : inside;
     const boxes = members.map((m) => ({ ...abs(m), ...sizeOf(m) }));
-    const x = Math.min(...boxes.map((b) => b.x)) - PAD;
+    // room on a side a NIC docks on for its inner half, and for arrows between it and the engine (route.ts keeps 14 clear of each)
+    const room = (side: "left" | "right") => Math.max(0, ...inside.filter((n) => isNic(n) && (n.data.node.dock ?? "right") === side && members !== inside).map((n) => sizeOf(n).w / 2 + 32));
+    const x = Math.min(...boxes.map((b) => b.x)) - PAD - room("left");
     const y = Math.min(...boxes.map((b) => b.y)) - PAD - HEAD;
-    const width = Math.max(...boxes.map((b) => b.x + b.w)) + PAD - x;
+    const width = Math.max(...boxes.map((b) => b.x + b.w)) + PAD + room("right") - x;
     const height = Math.max(...boxes.map((b) => b.y + b.h)) + FOOT - y;
     return { g, x, y, was: y, width, height };
   });
@@ -443,7 +656,7 @@ function fit(nodes: FlowNode[], abs: (n: SerqNodeT) => { x: number; y: number })
     out.push({ ...g, position: { x, y }, width, height, style: { width, height } });
   }
   for (const n of nodes) {
-    if (n.type !== "serq") continue;
+    if (n.type !== "serq" || isNic(n)) continue;
     const g = groups.find((g) => g.data.instance.members.includes(n.id));
     const p = abs(n);
     const o = g ? at.get(g.id)! : null;
@@ -451,6 +664,42 @@ function fit(nodes: FlowNode[], abs: (n: SerqNodeT) => { x: number; y: number })
     const r = g ? rects.find((x) => x.g === g)! : null;
     const dy = r ? r.y - r.was : 0;
     out.push({ ...n, parentId: g?.id, expandParent: !!g, position: o ? { x: p.x - o.x, y: p.y + dy - o.y } : p });
+  }
+  // a NIC docked on the edge of its queue's panel, else of its queue's card,
+  // half out of it, on the side its KV leaves or comes in by: an add-on of
+  // the instance, the link its copies take
+  for (const n of nodes) {
+    if (n.type !== "serq" || !isNic(n)) continue;
+    const { w, h } = sizeOf(n);
+    const right = n.data.node.dock !== "left";
+    const g = groups.find((g) => g.data.instance.members.includes(n.id));
+    const r = g && rects.find((x) => x.g === g);
+    const queue = out.find((q): q is SerqNodeT => q.type === "serq" && q.id === queueOfNic(n.id));
+    const edge = r
+      ? { x: r.x, y: r.y + HEAD, w: r.width, h: r.height - HEAD }
+      : queue
+        ? { ...absolute(out, queue), ...(({ w, h }) => ({ w, h }))(sizeOf(queue)) }
+        : null;
+    if (!edge) {
+      out.push({ ...n, draggable: false, position: abs(n) });
+      continue;
+    }
+    const x = (right ? edge.x + edge.w : edge.x) - w / 2;
+    const y = edge.y + edge.h / 2 - h / 2;
+    out.push({ ...n, draggable: false, parentId: r ? g!.id : undefined, expandParent: false, position: r ? { x: x - r.x, y: y - r.y } : { x, y } });
+  }
+  // the server: one a program, around all of it but the client
+  const boxes = out.flatMap((n) => {
+    if (n.type === "instance") return [{ x: n.position.x, y: n.position.y, w: n.width ?? 0, h: n.height ?? 0 }];
+    if (n.data.node.kind === "client" || n.data.node.kind === "draft") return [];
+    return [{ ...absolute(out, n), ...sizeOf(n) }];
+  });
+  if (boxes.length) {
+    const x = Math.min(...boxes.map((b) => b.x)) - SPAD;
+    const y = Math.min(...boxes.map((b) => b.y)) - SPAD - SHEAD;
+    const width = Math.max(...boxes.map((b) => b.x + b.w)) + SPAD - x;
+    const height = Math.max(...boxes.map((b) => b.y + b.h)) + SPAD - y;
+    out.unshift({ id: SERVER, type: "server", position: { x, y }, width, height, style: { width, height }, data: {}, selectable: false, draggable: false, deletable: false, focusable: false, zIndex: -1 });
   }
   return out;
 }
@@ -461,13 +710,15 @@ function absolute(nodes: FlowNode[], n: FlowNode) {
   return g ? { x: g.position.x + n.position.x, y: g.position.y + n.position.y } : n.position;
 }
 
-/** The whole graph in view, with room on the right for the sessions parked past the out node. */
+/** The whole graph in view, with room on the right for the frame and the cards there. */
 const fitOptions = () => ({ padding: { top: 0.12, bottom: 0.12, left: 0.12, right: "110px" as const }, maxZoom: 1.1 });
 
 function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => void, surface: ReplaySurface) => void }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [graph, setGraph] = useState<Graph | null>(null);
+  /** The router or the client whose properties the inspector shows. */
+  const [inspected, setInspected] = useState<string | null>(null);
   const [routes, setRoutes] = useState<Map<string, Point[]>>(new Map());
   const [A, setA] = useState<Awaited<ReturnType<typeof avoid>> | null>(null);
   const flow = useReactFlow();
@@ -529,7 +780,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
         type: "serq",
         position: at(n) ?? { x: n.x - W / 2, y: n.y - H / 2 },
         data: { node: n, nic: g.nodes.some((x) => x.id === nicOf(n.id)) },
-        deletable: n.kind !== "source" && n.kind !== "sink" && n.kind !== "decision",
+        deletable: n.kind !== "client" && n.kind !== "decision",
         // its size as last measured, so that the panels are fitted to it at once
         measured: flow.getNode(n.id)?.measured,
       }));
@@ -571,7 +822,8 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
       const boxes = nodes.flatMap((n) => {
         const p = absolute(nodes, n);
         // an instance's words are kept clear; its members are reached through its sides and its foot
-        return [n.type === "serq" ? { id: n.id, x: p.x, y: p.y, ...sizeOf(n) } : { id: n.id, x: p.x, y: p.y, w: n.width ?? 0, h: HEAD }];
+        if (n.type === "server") return [];
+        return [n.type === "serq" ? { id: n.id, x: p.x, y: p.y, ...sizeOf(n), in: n.data.node.kind === "client" ? ("bottom" as const) : undefined } : { id: n.id, x: p.x, y: p.y, w: n.width ?? 0, h: HEAD }];
       });
       setRoutes(route(A, boxes, edges.map((e) => ({ id: e.id, from: e.source, to: e.target }))));
     });
@@ -675,6 +927,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
     const t = JSON.parse(raw) as Tool;
     const on = under(e, t);
     if (t.kind === "node") return make(t.part, { x: e.clientX, y: e.clientY }, on);
+    if (t.kind === "router") return on ? host.routeTo(on.id) : host.say("The router chooses among an engine's members: drop it on one.", true);
     if (!on) return host.say(t.kind === "memory" ? "A memory pool goes on an engine: drop it on one." : t.arrow === "call" ? "An arrow starts at a station: drop it on one." : "A KV transfer starts at the queue whose KV it copies: drop it on an engine.", true);
     if (t.kind === "memory") return memory(t.pool, on);
     setPointer({ x: e.clientX, y: e.clientY });
@@ -740,17 +993,25 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
           onEdgesChange={onEdgesChange}
           onNodeDragStop={keep}
           onConnect={(c: Connection) => c.source && c.target && host.connect(c.source, c.target)}
-          isValidConnection={(c) => c.source !== c.target && c.target !== SOURCE && c.source !== SINK}
+          isValidConnection={(c) => c.source !== c.target && c.target !== CLIENT}
           onNodeClick={(_, n) => {
+            if (n.type === "server") return;
             const id = n.type === "instance" ? (n.data.instance.members.find((m) => !family(m).endsWith(".nic")) ?? null) : n.id;
             if (wire) return id && finish(id);
+            // the router and the client open their properties
+            const k = n.type === "serq" ? n.data.node.kind : null;
+            setInspected(k === "client" || k === "decision" ? n.id : null);
             host.select(id);
           }}
           onEdgeClick={(_, e) => {
             const poster = (e.data as { poster?: string } | undefined)?.poster;
             if (poster) host.select(poster);
           }}
-          onPaneClick={() => (wire ? setWire(null) : host.select(null))}
+          onPaneClick={() => {
+            if (wire) return setWire(null);
+            setInspected(null);
+            host.select(null);
+          }}
           onNodesDelete={(ns) => host.remove(ns.filter((n) => n.type === "serq").map((n) => n.id))}
           deleteKeyCode={["Delete", "Backspace"]}
           onDragOver={onDragOver}
@@ -782,6 +1043,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
           </svg>
         )}
       </div>
+      {inspected && graph?.nodes.some((n) => n.id === inspected) && <Inspector id={inspected} graph={graph} close={() => setInspected(null)} />}
     </div>
   );
 }
