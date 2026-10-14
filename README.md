@@ -25,7 +25,7 @@ run is under the figure, a table a section with the unit in each header;
 click a station or a drum (or its chip) to read one component's part of
 it, field by field.
 
-Under the figure, a metrics board lays the run out like a Prometheus
+The Metrics tab lays the run out like a Prometheus
 dashboard: TTFT, TPOT and response time as p50/p90/p99 over time, tokens
 scheduled, batch size, iteration time, residents per engine, queue length
 and wait per pool, preemptions, and the pools' usage where the program
@@ -44,7 +44,7 @@ replay zooms with it.
 The figure edits the text, too. + Prefill and + Decode make a draft
 engine, + Pool a draft pool of N engines (`queue D[N]`, a call choosing
 one); in Connect mode an arrow dragged from the arrival or a station to
-it writes the queue and its call into the program. The Edit tab shows the
+it writes the queue and its call into the program. The Flow tab shows the
 same deployment as nodes to drag and wire (React Flow): serQ's stations
 and arrows, where serQ placed them, each with an input on its left and an
 output on its right; an instance serQ draws as a panel (an engine with its
@@ -59,6 +59,12 @@ its instances, a NIC, a pool, the KV copy's pull or push (serQ writes
 which on the copy), a duplicate, or its removal. Every edit is text in
 the program, one step to undo, and serQ says whether it is a program
 ([docs/editor.md](docs/editor.md)).
+
+The program sits in a sidebar on the left (Ctrl+B or the button at the
+top left folds it away, a drag on its edge widens it; on a phone it is a
+drawer), and the bar at the top switches the stage between Replay, Flow,
+Code (the program the width of the page) and Metrics. The theme follows
+the system, or the button beside it.
 
 The figure, the IR, the report and the log are serQ's; the page adds only the
 replay and the editing. It deploys to GitHub Pages.

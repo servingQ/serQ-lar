@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 
 // The serQ the page was built from, as a tag: the one Cargo.lock pins, or,
@@ -23,6 +24,7 @@ function serqRef(): string {
 // (https://<owner>.github.io/serq-lar/).
 export default defineConfig({
   base: "./",
+  plugins: [tailwindcss()],
   worker: { format: "es" },
   // React Flow marks its module "use client" for React Server Components, which a static page has none of
   build: {

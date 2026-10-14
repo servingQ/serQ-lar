@@ -299,3 +299,31 @@ Issue draft:
 > <rect class="instance" data-role="instance" data-nodes="P P.nic" … />
 > ```
 > `src/view/deployment.rs`의 `BoxStyle::Instance` 항목에 `nodes`(패널의 노드 이름, 화살표의 `data-from`/`data-to`와 같은 이름)를 채우고, `src/view/svg.rs`가 브래킷과 같은 방식으로 `data-nodes`를 쓰되 역할은 `data-role="instance"`로 적는다(지금은 `nodes`가 있으면 무조건 `bracket`). `tests/draw.rs`에 예제마다 패널의 `data-nodes`가 그림의 노드인지 확인하는 검사를 둔다.
+
+## U16. The figure's dark colours, on the page's word
+
+serQ's SVG carries its own dark palette under
+`@media (prefers-color-scheme: dark)` (`src/view/svg.rs`, `stylesheet()`),
+so the figure follows the system's theme and nothing else. serq-lar now has
+a theme button (system, light, dark): with the page forced to light on a
+dark system, or dark on a light one, the figure stayed in the system's.
+Stopgap: `themeFigure()` in `web/src/main.ts` rewrites that one media query
+of the inline SVG's `<style>` to `all` or `not all` while a theme is forced,
+and back when it follows the system again; serQ's colours stay serQ's.
+Issue draft:
+
+> **SVG figure의 dark 팔레트를 문서 쪽에서 고를 수 있게 하기**
+>
+> `view::svg::stylesheet()`의 dark 색은 `@media (prefers-color-scheme: dark)`에만 걸려 있어서, 그림을 inline으로 넣은 페이지가 자기 테마(라이트/다크 토글)를 따로 가지면 그림만 시스템 테마로 남는다.
+>
+> Before:
+> ```css
+> @media (prefers-color-scheme: dark) { text { fill: #e8e6e3; } .bg { fill:#14171a } … }
+> ```
+> After:
+> ```css
+> @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) svg.serq text { … } … }
+> :root[data-theme="dark"] svg.serq text { … } …
+> ```
+> 1. dark 규칙을 두 번 쓴다: 시스템 dark이면서 `data-theme="light"`가 아닐 때, 그리고 `data-theme="dark"`일 때. 독립 SVG 파일에서는 `:root`가 `<svg>`라 지금과 같이 동작한다.
+> 2. 선택자를 그림의 루트 클래스(`svg.serq`)로 좁혀, inline으로 넣은 문서의 다른 요소(`text`, `.bg`, `.flow` …)에 새지 않게 한다. 지금은 `.flow` 같은 클래스 이름이 페이지 전체에 걸린다.

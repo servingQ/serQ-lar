@@ -5,125 +5,234 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>serq-lar</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='5' cy='8' r='4' fill='%23e8782a'/><circle cx='12' cy='8' r='3' fill='%232f6fde'/></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" />
+    <script>
+      // the theme and the sidebar as the viewer left them, before the first paint
+      try {
+        const t = localStorage.getItem("serq-lar:theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+        const s = localStorage.getItem("serq-lar:sidebar");
+        if (s === "closed" || (s === null && innerWidth < 860)) document.documentElement.dataset.sidebar = "closed";
+      } catch {}
+    </script>
   </head>
-  <body>
-    <header>
-      <h1>serq-lar</h1>
-      <span class="sub">a serQ run, replayed over its deployment view</span>
-      <a id="version" class="dim" target="_blank" rel="noopener"></a>
-      <a class="repo" href="https://github.com/servingQ/serQ-lar" target="_blank" rel="noopener" title="serq-lar on GitHub" aria-label="serq-lar on GitHub">
-        <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-      </a>
-    </header>
-    <main>
-      <section class="editor">
-        <div class="row">
-          <select id="program" aria-label="Example program"></select>
-          <button id="draw" title="The figure follows the text as you type; this runs it again">Run again</button>
-          <label class="dim">horizon
-            <select id="horizon" aria-label="Horizon, simulated seconds">
-              <option value="10">10 s</option>
-              <option value="30" selected>30 s</option>
-              <option value="60">60 s</option>
-              <option value="120">120 s</option>
-              <option value="300">300 s</option>
-            </select>
-          </label>
-          <label class="dim">seed <input id="seed" type="number" min="1" value="1" aria-label="Seed" /></label>
+  <body class="h-dvh overflow-hidden bg-bg text-ink antialiased">
+    <div class="app grid h-dvh grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto]">
+      <!-- the top bar: the page, its views, and where it comes from -->
+      <header class="topbar relative z-30 flex h-12 items-center gap-2 border-b border-line bg-panel/80 px-2 backdrop-blur sm:gap-3 sm:px-3">
+        <button id="sidebar-toggle" class="icon-btn" title="Show or hide the program (Ctrl+B)" aria-label="Toggle the program sidebar" aria-controls="sidebar">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9 4v16" stroke="currentColor" stroke-width="1.8"/><path class="rail-fill" d="M4.5 5.5h3v13h-3z" fill="currentColor" opacity=".35"/></svg>
+        </button>
+        <a class="brand flex shrink-0 items-center gap-2 no-underline" href="./" title="serq-lar">
+          <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><circle cx="5" cy="8" r="4" fill="var(--prefill)"/><circle cx="12" cy="8" r="3" fill="var(--decode)"/></svg>
+          <span class="text-[15px] font-semibold tracking-tight text-ink">serq-lar</span>
+        </a>
+        <span class="hidden truncate text-xs text-dim xl:inline">a serQ run, replayed over its deployment view</span>
+
+        <nav class="tabbar mx-auto" role="tablist" aria-label="View">
+          <span class="tab-ink" aria-hidden="true"></span>
+          <button id="tab-replay" role="tab" data-tab="replay" title="serQ's figure, with the run replayed over it">
+            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 8.5v7l5.5-3.5z" fill="currentColor"/></svg>
+            <span>Replay</span>
+          </button>
+          <button id="tab-edit" role="tab" data-tab="flow" title="The deployment as nodes to drag and wire: an arrow between two handles goes into the text">
+            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="3" y="4" width="7" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="14" y="15" width="7" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.5 9v3.5a2 2 0 0 0 2 2h4.5m0 0-2-2m2 2-2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Flow</span>
+          </button>
+          <button id="tab-code" role="tab" data-tab="code" title="The program, the width of the page">
+            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="m8 7-5 5 5 5m8-10 5 5-5 5M13.5 5l-3 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Code</span>
+          </button>
+          <button id="tab-metrics" role="tab" data-tab="metrics" title="The run's numbers over time">
+            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M4 20V10m6 10V4m6 16v-7m5 7H3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>Metrics</span>
+          </button>
+        </nav>
+
+        <div class="flex shrink-0 items-center gap-1">
+          <button id="theme" class="icon-btn" title="Theme: follows the system" aria-label="Switch the theme">
+            <svg class="i-system" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>
+            <svg class="i-light" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2m0 15v2m9.5-9.5h-2m-15 0h-2m16.2-6.7-1.4 1.4M6.7 17.3l-1.4 1.4m0-13.4 1.4 1.4m10.6 10.6 1.4 1.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <svg class="i-dark" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+          </button>
+          <a class="icon-btn" href="https://github.com/servingQ/serQ-lar" target="_blank" rel="noopener" title="serq-lar on GitHub" aria-label="serq-lar on GitHub">
+            <svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          </a>
         </div>
-        <div id="source" class="source"></div>
-      </section>
-      <section class="stage">
-        <div id="banner" class="banner"></div>
-        <div class="tools" role="toolbar" aria-label="Edit the deployment">
-          <span class="seg tabs" role="tablist" aria-label="View">
-            <button id="tab-replay" role="tab" title="serQ's figure, with the run replayed over it">Replay</button>
-            <button id="tab-edit" role="tab" title="The deployment as nodes to drag and wire: an arrow between two handles goes into the text">Edit</button>
-          </span>
-          <span class="seg" id="replay-tools" role="group" aria-label="What a drag on a station does">
-            <button id="tool-move" title="Drag moves the figure">Move</button>
-            <button id="tool-link" title="Drag from the arrival or a station to a station or a draft: the call goes into the text">Connect</button>
-          </span>
-          <button id="add-prefill" title="A prefill engine: a queue with its device, engine and pools">+ Prefill</button>
-          <button id="add-decode" title="A decode engine: a queue with its device, engine and pools">+ Decode</button>
-          <button id="add-delay" title="A delay stage: a wait outside the engines">+ Delay</button>
-          <button id="add-pool" title="A pool of engines: N instances of one queue, a call choosing one (llm-d's InferencePool)">+ Pool</button>
-          <form id="pool-form" class="pool-form" hidden>
-            <select name="role" aria-label="What the pool's engines do"><option value="decode">decode</option><option value="prefill">prefill</option></select>
-            <label>× <input name="count" type="number" min="1" max="64" value="2" aria-label="Instances" /></label>
-            <button>Add pool</button>
-          </form>
-          <span id="say" class="say" aria-live="polite"></span>
-        </div>
-        <div id="drafts" class="drafts" hidden></div>
-        <div id="inspector" class="inspector" hidden></div>
-        <div id="flow" class="flow" hidden></div>
-        <div id="view" class="view">
-          <canvas id="overlay"></canvas>
-          <div id="tip" class="tip" hidden></div>
-          <div class="zoom" role="group" aria-label="Zoom">
-            <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
-            <span id="zoom-level" class="mono">100%</span>
-            <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
-            <button id="zoom-fit" title="Fit the figure (or double-click it)">Fit</button>
+      </header>
+
+      <div class="body relative flex min-h-0">
+        <!-- the program: serQ's text, and what it runs for -->
+        <aside id="sidebar" class="sidebar editor flex min-h-0 flex-col border-r border-line bg-panel" aria-label="Program">
+          <div class="prog-head flex flex-col gap-2.5 border-b border-line p-3">
+            <div class="prog-title flex items-center gap-2">
+              <span class="eyebrow">Program</span>
+              <button id="sidebar-close" class="icon-btn ml-auto size-7" title="Hide the program (Ctrl+B)" aria-label="Hide the program sidebar">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="m14 7-5 5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+            <div class="prog-pick flex items-center gap-2">
+              <select id="program" class="min-w-0 flex-1 font-mono text-[13px]" aria-label="Example program"></select>
+              <button id="draw" class="btn-primary" title="The figure follows the text as you type; this runs it again">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4.5h-4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Run again
+              </button>
+            </div>
+            <div class="prog-opts grid grid-cols-2 gap-2">
+              <label class="field">
+                <span>horizon</span>
+                <select id="horizon" aria-label="Horizon, simulated seconds">
+                  <option value="10">10 s</option>
+                  <option value="30" selected>30 s</option>
+                  <option value="60">60 s</option>
+                  <option value="120">120 s</option>
+                  <option value="300">300 s</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>seed</span>
+                <input id="seed" type="number" min="1" value="1" aria-label="Seed" />
+              </label>
+            </div>
           </div>
-          <pre id="diag" class="diag" hidden title="Click to put the caret where serQ points"></pre>
-        </div>
-        <div class="controls">
-          <button id="play">Play</button>
-          <button id="step" title="Pause and go to the next event">Next event</button>
-          <input id="scrub" type="range" min="0" max="30" step="0.001" value="0" aria-label="Time" />
-          <select id="speed" aria-label="Speed while something is happening">
-            <option value="0.02">0.02×</option>
-            <option value="0.05">0.05×</option>
-            <option value="0.1" selected>0.1×</option>
-            <option value="0.25">0.25×</option>
-            <option value="1">1×</option>
-            <option value="4">4×</option>
-          </select>
-          <label class="dim" title="When no session is in any station or queue, jump to the next event"><input id="skip" type="checkbox" checked /> skip idle time</label>
-          <span id="clock" class="mono">t = 0.000 s</span>
-          <span id="counts" class="mono dim"></span>
-        </div>
-        <ul class="legend">
-          <li><i class="dot ring"></i>waiting in a pool's queue</li>
-          <li><i class="dot prefill"></i>prefill</li>
-          <li><i class="dot decode"></i>decode</li>
-          <li><i class="dot plain"></i>a transfer, a tool, any other stage</li>
-          <li><i class="dot halo"></i>in the forward pass running now</li>
-          <li><i class="bar"></i>the pass's progress; the budget bar is its tokens</li>
-          <li><i class="dot flash"></i>preempted</li>
-          <li class="hint">the figure follows the text as you type, and the run follows when you pause; the text completes serQ's words and the program's names as you type (Ctrl+Space to ask); wheel or pinch to zoom, drag to pan, double-click to fit. To edit from the figure: + Prefill / + Decode make a draft, and in Connect mode an arrow from the arrival or a station to it writes it into the text; click a station for its instances, NIC, pools, copy mode, or to remove it. Ctrl+Z in the text undoes any of it. Hover a session for its story, click to follow it; click a station or a drum for its numbers. Between stations a session follows the arrows at its own pace; the speed is the simulation's while something is in a station.</li>
-        </ul>
-        <div class="dim mono" id="status"></div>
-        <div id="report" class="report" aria-live="polite"></div>
-      </section>
-      <section class="metrics" aria-label="Metrics">
-        <div class="row metrics-bar">
-          <h2>Metrics</h2>
-          <label class="dim">window
-            <select id="window" aria-label="Window, simulated seconds">
-              <option value="0" selected>auto</option>
-              <option value="0.2">0.2 s</option>
-              <option value="0.5">0.5 s</option>
-              <option value="1">1 s</option>
-              <option value="2">2 s</option>
-              <option value="5">5 s</option>
-              <option value="10">10 s</option>
-              <option value="30">30 s</option>
-            </select>
-          </label>
-          <button id="gauges" hidden>Add pool gauges</button>
-          <span id="metrics-note" class="dim"></span>
-        </div>
-        <div id="tiles" class="tiles"></div>
-        <div id="panels" class="panels"></div>
-        <details id="observes-box" hidden>
-          <summary>The program's observes</summary>
-          <div id="observes" class="panels"></div>
-        </details>
-      </section>
-    </main>
+          <div id="source" class="source min-h-0 flex-1"></div>
+          <div class="sidebar-foot flex items-center gap-2 border-t border-line px-3 py-1.5 text-[11px] text-dim">
+            <kbd>Ctrl</kbd><kbd>Space</kbd><span>completes</span>
+            <span class="opacity-50">·</span>
+            <kbd>Ctrl</kbd><kbd>Z</kbd><span>undoes any edit</span>
+          </div>
+          <div id="sidebar-grip" class="grip" role="separator" aria-orientation="vertical" aria-label="Resize the program sidebar" title="Drag to resize"></div>
+        </aside>
+        <div class="scrim" id="scrim" aria-hidden="true"></div>
+
+        <!-- the views -->
+        <main id="main" class="stage relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
+          <div class="tools sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-line bg-bg/85 px-3 py-2 backdrop-blur sm:px-4" role="toolbar" aria-label="Edit the deployment" data-show="replay flow">
+            <span class="seg" id="replay-tools" role="group" aria-label="What a drag on a station does" data-show="replay">
+              <button id="tool-move" title="Drag moves the figure">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 3v18M3 12h18M12 3l-3 3m3-3 3 3M12 21l-3-3m3 3 3-3M3 12l3-3m-3 3 3 3m15-3-3-3m3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Move
+              </button>
+              <button id="tool-link" title="Drag from the arrival or a station to a station or a draft: the call goes into the text">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="5.5" cy="12" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="18.5" cy="12" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 12h8" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2.5 2"/></svg>
+                Connect
+              </button>
+            </span>
+            <span class="tools-sep" data-show="replay"></span>
+            <span class="eyebrow hidden sm:inline">Add</span>
+            <button id="add-prefill" class="add" title="A prefill engine: a queue with its device, engine and pools"><i class="dot prefill"></i>Prefill</button>
+            <button id="add-decode" class="add" title="A decode engine: a queue with its device, engine and pools"><i class="dot decode"></i>Decode</button>
+            <button id="add-delay" class="add" title="A delay stage: a wait outside the engines"><i class="dot plain"></i>Delay</button>
+            <button id="add-pool" class="add" title="A pool of engines: N instances of one queue, a call choosing one (llm-d's InferencePool)"><i class="dot ring"></i>Pool</button>
+            <form id="pool-form" class="pool-form" hidden>
+              <select name="role" aria-label="What the pool's engines do"><option value="decode">decode</option><option value="prefill">prefill</option></select>
+              <label>× <input name="count" type="number" min="1" max="64" value="2" aria-label="Instances" /></label>
+              <button class="btn-primary">Add pool</button>
+            </form>
+            <span id="say" class="say" aria-live="polite"></span>
+          </div>
+
+          <div class="flex flex-col gap-3 p-3 sm:p-4" data-show="replay flow">
+            <div id="drafts" class="drafts" hidden></div>
+            <div id="inspector" class="inspector" hidden></div>
+            <div id="banner" class="banner" data-show="replay"></div>
+          </div>
+
+          <!-- Flow: React Flow, loaded when first opened -->
+          <div class="flex min-h-0 flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4" data-show="flow">
+            <div id="flow" class="flow flex-1"></div>
+          </div>
+
+          <!-- Replay: serQ's figure; it stays laid out off-stage under the other views, where the graph is read off it -->
+          <div class="replay flex flex-col gap-3 px-3 pb-6 sm:px-4" id="replay-pane">
+            <div id="view" class="view">
+              <canvas id="overlay"></canvas>
+              <div id="tip" class="tip" hidden></div>
+              <div class="zoom" role="group" aria-label="Zoom">
+                <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+                <span id="zoom-level" class="mono">100%</span>
+                <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+                <button id="zoom-fit" title="Fit the figure (or double-click it)">Fit</button>
+              </div>
+              <pre id="diag" class="diag" hidden title="Click to put the caret where serQ points"></pre>
+            </div>
+            <div class="player" data-show="replay">
+              <button id="play" class="play" aria-label="Play">
+                <svg class="i-play" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
+                <svg class="i-pause" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6.5 4.5h4v15h-4zm7 0h4v15h-4z" fill="currentColor"/></svg>
+              </button>
+              <button id="step" class="icon-btn" title="Pause and go to the next event" aria-label="Next event">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M5 5v14l10-7zm12 0h2.5v14H17z" fill="currentColor"/></svg>
+              </button>
+              <span id="clock" class="mono clock">t = 0.000 s</span>
+              <input id="scrub" type="range" min="0" max="30" step="0.001" value="0" aria-label="Time" />
+              <select id="speed" aria-label="Speed while something is happening">
+                <option value="0.02">0.02×</option>
+                <option value="0.05">0.05×</option>
+                <option value="0.1" selected>0.1×</option>
+                <option value="0.25">0.25×</option>
+                <option value="1">1×</option>
+                <option value="4">4×</option>
+              </select>
+              <label class="check" title="When no session is in any station or queue, jump to the next event"><input id="skip" type="checkbox" checked /> skip idle</label>
+              <span id="counts" class="mono counts"></span>
+            </div>
+            <details class="legend-box" data-show="replay">
+              <summary>
+                <ul class="legend">
+                  <li><i class="dot ring"></i>waiting in a pool's queue</li>
+                  <li><i class="dot prefill"></i>prefill</li>
+                  <li><i class="dot decode"></i>decode</li>
+                  <li><i class="dot plain"></i>a transfer, a tool, any other stage</li>
+                  <li><i class="dot halo"></i>in the forward pass running now</li>
+                  <li><i class="bar"></i>the pass's progress; the budget bar is its tokens</li>
+                  <li><i class="dot flash"></i>preempted</li>
+                </ul>
+                <span class="more">How to read and edit it</span>
+              </summary>
+              <p class="hint">The figure follows the text as you type, and the run follows when you pause; the text completes serQ's words and the program's names as you type (Ctrl+Space to ask); wheel or pinch to zoom, drag to pan, double-click to fit. To edit from the figure: + Prefill / + Decode make a draft, and in Connect mode an arrow from the arrival or a station to it writes it into the text; click a station for its instances, NIC, pools, copy mode, or to remove it. Ctrl+Z in the text undoes any of it. Hover a session for its story, click to follow it; click a station or a drum for its numbers. Between stations a session follows the arrows at its own pace; the speed is the simulation's while something is in a station.</p>
+            </details>
+            <div id="report" class="report card" aria-live="polite" data-show="replay"></div>
+          </div>
+
+          <!-- Metrics -->
+          <section class="metrics flex flex-col gap-3 p-3 sm:p-4" aria-label="Metrics" data-show="metrics">
+            <div class="metrics-bar flex flex-wrap items-center gap-3">
+              <h2 class="text-lg font-semibold tracking-tight">Metrics</h2>
+              <label class="field field-inline"><span>window</span>
+                <select id="window" aria-label="Window, simulated seconds">
+                  <option value="0" selected>auto</option>
+                  <option value="0.2">0.2 s</option>
+                  <option value="0.5">0.5 s</option>
+                  <option value="1">1 s</option>
+                  <option value="2">2 s</option>
+                  <option value="5">5 s</option>
+                  <option value="10">10 s</option>
+                  <option value="30">30 s</option>
+                </select>
+              </label>
+              <button id="gauges" hidden>Add pool gauges</button>
+              <span id="metrics-note" class="dim"></span>
+            </div>
+            <div id="tiles" class="tiles"></div>
+            <div id="panels" class="panels"></div>
+            <details id="observes-box" hidden>
+              <summary>The program's observes</summary>
+              <div id="observes" class="panels"></div>
+            </details>
+          </section>
+        </main>
+      </div>
+
+      <!-- the status bar -->
+      <footer class="statusbar flex h-7 items-center gap-3 border-t border-line bg-panel px-3 text-[11px] text-dim">
+        <span class="live" aria-hidden="true"></span>
+        <span id="status" class="mono min-w-0 flex-1 truncate"></span>
+        <a id="version" class="mono shrink-0 hover:text-ink" target="_blank" rel="noopener"></a>
+      </footer>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
