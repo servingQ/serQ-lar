@@ -8,7 +8,7 @@ import { Editor } from "./editor";
 import { graphOf, SINK, SOURCE, draftId } from "./flow/graph";
 import type { EditHost } from "./flow/EditView";
 import type { Log } from "./events";
-import { outline as readOutline, type Outline } from "./outline";
+import { kinds, outline as readOutline, type Outline } from "./outline";
 import { Player } from "./player";
 import { render, type Report, type Selection } from "./report";
 import { Serq } from "./serq";
@@ -114,6 +114,7 @@ async function redraw(runNow = false) {
   if (cut.ok) editor.colour(JSON.parse(cut.value));
   // the outline needs the text to parse, not to link: an edit can follow a link error
   currentOutline = outlined.ok ? readOutline(outlined.value, src) : null;
+  if (currentOutline) editor.outlined = kinds(currentOutline);
   compose.refresh();
   if (!drawn.ok) return fail(drawn.error);
   if (!irJson.ok) return fail(irJson.error);
@@ -518,6 +519,9 @@ dashboard.onAddGauges = (lines) => {
   v.textContent = `serQ ${__SERQ_REF__} · wasm`;
   v.href = `https://github.com/servingQ/serQ/tree/${sha ?? __SERQ_REF__}`;
 }
+drawer.ask({ cmd: "vocabulary" }).then((r) => {
+  if (r.ok) editor.vocabulary = JSON.parse(r.value);
+});
 load();
 
 // for the page checks (scripts/check-page.mjs): what is on the page, without reading the canvas

@@ -128,3 +128,15 @@ pub fn outline(src: &str) -> Result<String, JsError> {
         .map(|o| o.to_json())
         .map_err(|e| JsError::new(&e))
 }
+
+/// Every word the language gives a program, with the role it is coloured
+/// by, for completing them (`serq::frontend::highlight::vocabulary`): a
+/// JSON array of `[role, word]`.
+#[wasm_bindgen]
+pub fn vocabulary() -> String {
+    let words: Vec<_> = serq::frontend::highlight::vocabulary()
+        .into_iter()
+        .map(|(role, word)| serde_json::json!([role.name(), word]))
+        .collect();
+    serde_json::Value::Array(words).to_string()
+}
