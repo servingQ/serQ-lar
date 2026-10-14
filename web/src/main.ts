@@ -1,4 +1,5 @@
 import "./style.css";
+import { EditorView } from "@codemirror/view";
 import { anchors } from "./anchors";
 import { Camera } from "./camera";
 import { Compose } from "./compose";
@@ -406,12 +407,6 @@ const compose = new Compose(
     text: () => editor.text,
     outline: () => currentOutline,
     apply: (edits) => editor.apply(edits),
-    // the text is the Code view's
-    reveal: (at) => {
-      setTab("code");
-      editor.view.dispatch({ selection: { anchor: at[0], head: at[1] }, scrollIntoView: true });
-      editor.view.focus();
-    },
     say: (m, bad) => sayIt(m, bad),
   },
   $<HTMLDivElement>("inspector"),
@@ -467,7 +462,23 @@ const editHost: EditHost = {
     const d = part.kind === "pool" ? compose.addPool(part.role, part.count) : compose.add(part.kind);
     return { draft: d, id: draftId(compose.draftList.indexOf(d)) };
   },
+  code(id) {
+    const at = currentOutline && codeOf(currentOutline, id);
+    if (!at) return void sayIt(`${id} is not written as such in the text: serQ's outline does not place it.`, true);
+    setTab("code");
+    editor.view.dispatch({ selection: { anchor: at[0], head: at[1] }, effects: EditorView.scrollIntoView(at[0], { y: "center" }) });
+    editor.view.focus();
+  },
 };
+
+/** Where a node of the Edit view is written: a queue, its NIC, or a declaration (a delay). */
+function codeOf(ol: Outline, id: string): [number, number] | null {
+  const nic = id.endsWith(".nic");
+  const q = ol.queues.find((x) => x.name === id.replace(/\.nic$/, ""));
+  if (q) return (nic && q.members.find((m) => m.kind === "nic")?.range) || q.range;
+  return ol.decls.find((d) => d.name === id)?.range ?? null;
+}
+
 /** The Edit view, loaded the first time it is asked for: React and React Flow are its alone. */
 let editView: Promise<{ show(g: ReturnType<typeof graphOf>): void }> | null = null;
 

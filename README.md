@@ -52,7 +52,8 @@ output on its right; an instance serQ draws as a panel (an engine with its
 NIC) is a box holding its members, dragged as one; each station lists its
 memory pools (a declared pool no hold takes yet, dashed); a chosen engine
 has Make instance (its queue a family its calls choose a member of),
-+ NIC and + Memory pool on a toolbar; the arrows are routed around the
++ NIC and + Memory pool on a toolbar, and any station chosen has Code,
+which opens the Code tab where it is written; the arrows are routed around the
 nodes (libavoid), none on top of another; an arrow drawn from one handle to another is written
 into the program, a node dragged stays where it was put (in this browser
 only), and Delete removes a station. Click a station for

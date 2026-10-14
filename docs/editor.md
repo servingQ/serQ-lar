@@ -70,7 +70,9 @@ See [upstream.md](upstream.md), U10.
    well. Each station lists its memory pools, from the IR: request slots
    (orange) and KV blocks (blue), with their capacity; a pool no hold
    takes yet, which serQ's figure does not draw, is dashed. An engine or a
-   NIC chosen has a toolbar: Make instance, + NIC, + Memory pool (7). A
+   NIC chosen has a toolbar: Make instance, + NIC, + Memory pool (7), and
+   Code, which opens the Code tab on where it is written (a station or a
+   delay chosen has Code alone). A
    connection between two handles is an arrow below; a node dragged keeps
    its place in this browser (a layout, not the program); Delete removes a
    station; "serQ's layout" puts every node back.

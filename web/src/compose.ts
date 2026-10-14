@@ -15,8 +15,6 @@ export interface Host {
   outline(): Outline | null;
   /** Make the edits, as one step to undo. */
   apply(edits: Edit[]): void;
-  /** Put the caret on a range of the text. */
-  reveal(at: [number, number]): void;
   /** A line for the viewer: what was done, or why it was not. */
   say(message: string, bad?: boolean): void;
 }
@@ -197,7 +195,6 @@ export class Compose {
     const src = this.host.text();
     const parts: string[] = [];
     parts.push(`<b class="mono">queue ${esc(q.name)}${q.family ? `[${esc(q.family)}]` : ""}</b> <span class="dim">${esc(q.roles.join(", "))}</span>`);
-    parts.push(`<button data-act="show">Show in text</button>`);
     if (q.family) parts.push(`<span class="group">instances <button data-act="less" aria-label="One instance fewer">−</button><span class="mono">${esc(familySize(src, ol, q))}</span><button data-act="more" aria-label="One instance more">+</button></span>`);
     for (const r of ol.relations.filter((r) => r.source === q.name || r.reader === q.name)) {
       parts.push(
@@ -227,8 +224,6 @@ export class Compose {
       this.host.say(done);
     };
     switch (act) {
-      case "show":
-        return this.host.reveal(q.range);
       case "less":
       case "more":
         return run(resize(src, ol, q.name, act === "more" ? 1 : -1), `${q.name}: one instance ${act === "more" ? "more" : "fewer"}.`);
