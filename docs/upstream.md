@@ -54,9 +54,14 @@ Found while placing requests on the figure; each is a view change in serQ.
   page parks sessions away at a tool (a stage the figure omits) past the
   exit. A source glyph, the `out` sink, and a place for the workload's own
   time (the tool, the think time) would give them a home.
-- **A delay folded into a latency label has no station.** `D.nic.latency`
-  is a label on the transfer arrow, so a session in it is drawn nowhere
-  for 2 ms. Fine at this scale; worth a glyph when the latency is the point.
+- **A delay folded into a latency label has no station** — landed. serQ
+  [#611](https://github.com/servingQ/serQ/issues/611),
+  [#612](https://github.com/servingQ/serQ/pull/612): the wait before a
+  copy is the transfer run's own `latency` (IR 14), not a delay stage
+  `D.nic.latency` the kernel made. A session is on the two NICs for the
+  whole copy, the wait included, so the packet travels the arrow for all
+  of it; the report has one row per NIC, with the wait in its `wait`
+  column; the figure writes `latency (2e-3)` on the read from the run.
 
 ## U4. Speed
 

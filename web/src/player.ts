@@ -338,8 +338,8 @@ export class Player {
             m.away = true;
             if (!snap) this.travel(m, undefined, true);
           }
-          // else: its hold's work (a link's latency) runs off the figure
-          // while it stays where it was admitted
+          // else: a run on a stage the figure does not draw, inside a hold:
+          // it stays where it was admitted
           break;
         }
         case "done":
