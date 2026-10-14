@@ -105,3 +105,16 @@ fn series(r: &serq::Report) -> String {
     })
     .to_string()
 }
+
+/// The program cut into pieces with their roles, for colouring
+/// (`serq::frontend::highlight`): a JSON array of `[role, text]` whose
+/// texts, concatenated, are the source. Past a lexical error, the rest is
+/// one `unlexed` piece.
+#[wasm_bindgen]
+pub fn tokens(src: &str) -> String {
+    let pieces: Vec<_> = serq::frontend::highlight::highlight(src)
+        .into_iter()
+        .map(|(role, text)| serde_json::json!([role.name(), text]))
+        .collect();
+    serde_json::Value::Array(pieces).to_string()
+}

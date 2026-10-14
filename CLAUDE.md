@@ -14,6 +14,8 @@ server, and the site must stay deployable to GitHub Pages.
   CLAUDE.md).
 - **No fork of serQ.** `serq-wasm` depends on `../serQ` by path; CI checks
   out `SERQ_REF`. Bump `SERQ_REF` in the change that needs the newer serQ.
+  `SERQ_REF` is a serQ tag (`v0.1.6-alpha.2`), never a commit sha: a change
+  that needs an untagged serQ waits for the tag, or asks for one.
 - **The replay is serQ's log, whole or cut.** The page replays the log of
   the run it made (`run_logged`), never a made-up one; when the event cap
   cut the log short, the banner says so.
