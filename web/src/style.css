@@ -144,14 +144,6 @@ label { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
 .btn-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); border-color: color-mix(in srgb, var(--accent) 88%, #000); }
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; box-shadow: none; color: var(--dim); }
 .icon-btn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); border-color: transparent; }
-/* the server's signature under the program picker: what crosses */
-.crossing { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
-.crossing .eyebrow + .x-chip { margin-left: 0; }
-.crossing .eyebrow:not(:first-child) { margin-left: 6px; }
-.x-chip { font-size: 11.5px; line-height: 18px; padding: 0 6px; border: 1px solid var(--line); border-radius: 9px; background: var(--raised); color: var(--ink); }
-.x-hidden { border-style: dashed; color: var(--dim); }
-.x-hidden::after { content: " · hidden"; font-size: 10px; }
-.x-none { color: var(--dim); }
 .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
 .field { display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
 .field > span { font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
