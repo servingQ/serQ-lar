@@ -4,7 +4,8 @@
 // `data-to`, `data-role`), a KV copy with the mode serQ wrote on it
 // (`data-copy`, `data-poster`); what kind each station is comes from the IR.
 // Nothing here decides what the program means: the page draws serQ's graph
-// with handles to grab, and every arrow drawn goes back into the text.
+// with handles to grab, and every arrow drawn goes back into the text. The
+// words on it are serQ's too, as its figure writes them (`wordsOf`).
 
 import { points } from "../anchors";
 import type { Draft } from "../edit";
@@ -23,6 +24,10 @@ export interface GraphNode {
   draft?: Draft;
   /** The memory pools it holds (an engine's request slots and KV blocks). */
   pools?: GraphPool[];
+  /** serQ's words: its name over the glyph (`P[i]`, `choose j, i`), and its
+   * note under it (`tokens cap 8192`, a NIC's rate, a delay's `~exp(3)`). */
+  title?: string;
+  note?: string;
 }
 
 /** A memory pool, as serQ's IR declares it. */
@@ -35,6 +40,10 @@ export interface GraphPool {
   cap: string;
   /** Whether serQ's figure draws it: a pool no hold takes is declared, not drawn. */
   drawn: boolean;
+  /** serQ's words beside its drum (`pool P.kv on P's device`, `cap 160000 ·
+   * block 16 · evict lru · preempt lifo`), and whether it draws a prefix cache. */
+  words?: string[];
+  cache?: boolean;
 }
 
 export interface GraphEdge {
@@ -44,6 +53,11 @@ export interface GraphEdge {
   kind: "arrival" | "flow" | "exit" | "copy";
   copy?: "pull" | "push";
   poster?: string;
+  /** A copy serQ brackets (two stations one job holds at once) rather than draws an arrow for. */
+  bracket?: true;
+  /** serQ's words along the arrow: a branch's condition (`remote_prefill`,
+   * `else`), an exit's (`out (K + n >= 16384)`), a copy's way and latency. */
+  words?: string[];
 }
 
 /** An instance: the panel serQ draws around the engine, NIC and pools one
@@ -128,10 +142,11 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrP
   for (const r of svg.querySelectorAll<SVGRectElement>('rect[data-role="bracket"][data-copy]')) {
     const [from, to] = (r.dataset.nodes ?? "").split(" ");
     if (from && to && !edges.some((e) => e.from === from && e.to === to))
-      edges.push({ id: `${from}>${to}`, from, to, kind: "copy", copy: r.dataset.copy as "pull" | "push", poster: r.dataset.poster });
+      edges.push({ id: `${from}>${to}`, from, to, kind: "copy", copy: r.dataset.copy as "pull" | "push", poster: r.dataset.poster, bracket: true });
   }
   poolsOf(svg, ir.pools ?? [], nodes);
   const instances = instancesOf(svg, nodes);
+  wordsOf(svg, nodes, edges);
   compact(nodes, edges);
   // drafts wait in a row under the figure until an arrow reaches them
   const below = Math.max(0, ...nodes.map((n) => n.y)) + ROW * 1.5;
@@ -194,6 +209,100 @@ function instancesOf(svg: SVGSVGElement, nodes: GraphNode[]): GraphInstance[] {
     out.push({ id: `instance:${engine.id}`, title: words[0] || `instance ${engine.label}`, note: words.slice(1).join(" "), members: members.map((n) => n.id) });
   }
   return out;
+}
+
+/** A text of the figure: where serQ wrote it, and what. */
+interface Words {
+  x: number;
+  y: number;
+  text: string;
+  el: SVGTextElement;
+}
+
+/** serQ's words on the figure, on what they are about: a node's name over it
+ * and its note under it, a pool's lines beside its drum (and the prefix cache
+ * under them), an arrow's condition, an exit's, a copy's way and latency, the
+ * arrival's process.
+ * Stopgap: a text of the figure says nothing of what it labels, so each is
+ * taken by its place as serQ's writer sets it (deployment.rs): a node's name
+ * and note on its centre line, just above and below it; a pool's lines just
+ * right of its drum; the rest, the nearest arrow's. docs/upstream.md U19 asks
+ * serQ to write `data-for` on each, as it writes `data-pool` on a drum. */
+function wordsOf(svg: SVGSVGElement, nodes: GraphNode[], edges: GraphEdge[]) {
+  const panels = [...svg.querySelectorAll<SVGRectElement>("rect.instance")].map((r) => r.getBBox());
+  let left: Words[] = [...svg.querySelectorAll<SVGTextElement>("text")]
+    .filter((t) => !t.closest("g[data-node], g[data-pool]"))
+    .map((el) => ({ x: Number(el.getAttribute("x")), y: Number(el.getAttribute("y")), text: el.textContent?.trim() ?? "", el }))
+    // an instance's words are its panel's (instancesOf)
+    .filter((w) => w.text && !panels.some((b) => Math.abs(w.y - (b.y - 7)) < 1 && w.x >= b.x && w.x < b.x + b.width));
+  const take = (pick: (w: Words) => boolean, best: (w: Words) => number): Words | undefined => {
+    const w = left.filter(pick).sort((a, b) => best(a) - best(b))[0];
+    if (w) left = left.filter((x) => x !== w);
+    return w;
+  };
+  // a node's name over it and its note under it, on its centre line
+  for (const g of svg.querySelectorAll<SVGGElement>("g[data-node]")) {
+    const n = nodes.find((x) => x.id === g.dataset.node);
+    if (!n) continue;
+    const b = g.getBBox();
+    const cx = b.x + b.width / 2;
+    const above = take((w) => Math.abs(w.x - cx) < 1 && w.y < b.y && w.y > b.y - 18, (w) => b.y - w.y);
+    const under = take((w) => Math.abs(w.x - cx) < 1 && w.y > b.y + b.height && w.y < b.y + b.height + 24, (w) => w.y);
+    if (above) n.title = above.text;
+    if (under) n.note = under.text;
+  }
+  // a pool's lines, just right of its drum; its prefix cache, the band just under them
+  const caches = [...svg.querySelectorAll<SVGRectElement>("rect.cached")].map((r) => r.getBBox());
+  for (const n of nodes)
+    for (const p of n.pools ?? []) {
+      const drum = svg.querySelector<SVGGElement>(`g[data-pool="${CSS.escape(p.id)}"][data-role="drum"]`);
+      if (!drum) continue;
+      const b = drum.getBBox();
+      const lines: Words[] = [];
+      for (let w; (w = take((w) => w.x > b.x + b.width && w.x < b.x + b.width + 16 && w.y > b.y && w.y < b.y + b.height + 4, (w) => w.y)); ) lines.push(w);
+      p.words = lines.sort((a, q) => a.y - q.y).map((w) => w.text);
+      p.cache = caches.some((c) => c.x <= b.x + 1 && Math.abs(c.y - (b.y + b.height)) < 6);
+    }
+  left = left.filter((w) => w.text !== "prefix cache");
+  // the rest: the nearest arrow's, if one is near (the arrival's process, a condition, an exit's, a copy's)
+  const arrows = [...svg.querySelectorAll<SVGPathElement>("path[data-role]")].map((el) => {
+    const r = el.dataset.role;
+    const id = r === "arrival" ? `${SOURCE}>${el.dataset.to}` : r === "exit" ? `${el.dataset.from}>${SINK}` : `${el.dataset.from}>${el.dataset.to}`;
+    return { id, pts: points(el) };
+  });
+  const near = new Map<string, Words[]>();
+  for (const w of left) {
+    let best: { id: string; d: number } | null = null;
+    for (const a of arrows) {
+      const d = distance(w, a.pts);
+      if (d < 16 && (!best || d < best.d)) best = { id: a.id, d };
+    }
+    if (best) near.set(best.id, [...(near.get(best.id) ?? []), w]);
+  }
+  for (const [id, ws] of near) {
+    const words = ws.sort((a, b) => a.y - b.y || a.x - b.x).map((w) => w.text);
+    if (id.startsWith(`${SOURCE}>`)) {
+      const src = nodes.find((n) => n.id === SOURCE);
+      if (src) src.sub = words.join(" · ");
+      continue;
+    }
+    const e = edges.find((x) => x.id === id);
+    if (e) e.words = words;
+  }
+}
+
+/** How far the point `p` is from the polyline `pts`. */
+function distance(p: { x: number; y: number }, pts: { x: number; y: number }[]): number {
+  let d = Infinity;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const k = dx || dy ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy))) : 0;
+    d = Math.min(d, Math.hypot(p.x - (a.x + k * dx), p.y - (a.y + k * dy)));
+  }
+  return d;
 }
 
 /** The spacing of the Edit view's columns and rows. */

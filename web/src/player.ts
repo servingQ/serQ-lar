@@ -1,25 +1,29 @@
-// Replays serQ's run log over the deployment view. Each session is a
-// circle: hollow while it waits in a pool's queue, filled once admitted
-// and while it runs; orange in a prefill, blue in a decode, grey on any
-// other stage (a NIC, a tool). A ring marks the requests in the forward
-// pass an engine is running, and the engine's budget bar fills with that
-// pass's tokens. A session on a stage the figure does not draw (the
-// workload's tool) parks, dimmed, past the exit.
+// Replays serQ's run log over the Flow view (flow/replay.ts places it). Each
+// session is a circle: hollow while it waits in a pool's queue, filled once
+// admitted and while it runs; orange in a prefill, blue in a decode, grey on
+// any other stage (a NIC, a tool). A ring marks the requests in the forward
+// pass an engine is running, and the engine's budget bar shows that pass.
+// A session on a stage the deployment does not draw (the workload's tool)
+// parks, dimmed, past the exit.
 //
 // A session is where its latest run put it: in that run's first drawn
 // station (a transfer over two NICs stages at the first). A wait moves it
 // to the pool's queue only when that is where its next run is (the log
 // says): a reservation elsewhere, such as the decoder's KV before the
 // transfer, leaves it where it stands, hollow. Between stations it travels
-// along the figure's arrows at a pace of its own: a hop takes a fraction of
+// along the arrows at a pace of its own: a hop takes a fraction of
 // a wall-clock second whatever the playback speed, since in the simulation
 // it takes no time. When nothing is in any station, time can skip to the
 // next event (`skipIdle`): a tool call of seconds passes in a blink, an
 // iteration of milliseconds plays at the chosen speed.
 
 import type { Anchors, Box, Point } from "./anchors";
-import type { Camera } from "./camera";
 import { label, who, whoOf, type Log, type LogEvent, type Named } from "./events";
+
+/** How the canvas maps the anchors' points to its pixels: React Flow's viewport. */
+export interface View {
+  transform(dpr: number): [number, number, number, number, number, number];
+}
 
 type Mode = "prefill" | "decode" | "plain";
 
@@ -130,8 +134,8 @@ export class Player {
     private poolStage: Map<number, string>,
     private canvas: HTMLCanvasElement,
     public horizon: number,
-    /** The part of the figure in view: the canvas draws as the SVG shows. */
-    private camera: Camera,
+    /** The part of the deployment in view: the canvas draws as React Flow shows it. */
+    private camera: View,
   ) {
     this.ctx = canvas.getContext("2d")!;
     this.stageName = log.stages.map((s) => s.name);
@@ -149,9 +153,19 @@ export class Player {
   /** End the animation loop: a new figure gets a new player. */
   stop() {
     this.alive = false;
+    this.clear();
+  }
+
+  /** Play over the places as they are now: a node dragged, measured, or
+   * drawn again. Each session eases to its new place. */
+  place(at: Anchors) {
+    this.at = at;
+  }
+
+  private clear() {
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    for (const b of this.at.budgets.values()) b.rect.setAttribute("width", String(b.full * 0.62));
+    for (const b of this.at.budgets.values()) b.show(null);
   }
 
   /** Jump to time `t`, replaying from the start if it is behind us. */
@@ -218,7 +232,23 @@ export class Player {
     return false;
   }
 
-  /** The session under the figure point `(x, y)`, if any. */
+  /** Per station, the sessions waiting at its entrance and those in it. */
+  occupancy(): Map<string, { waiting: number; running: number }> {
+    const out = new Map<string, { waiting: number; running: number }>();
+    for (const m of this.movers.values()) {
+      const w = m.where;
+      if (w.kind === "gone" || w.kind === "source" || m.away) continue;
+      const name = this.nodeOf(m);
+      if (!name || !this.at.stations.has(name)) continue;
+      const c = out.get(name) ?? { waiting: 0, running: 0 };
+      if (w.kind === "queue" || w.kind === "held") c.waiting++;
+      else c.running++;
+      out.set(name, c);
+    }
+    return out;
+  }
+
+  /** The session under the point `(x, y)`, if any. */
   hit(x: number, y: number): Hit | null {
     let best: Mover | null = null;
     let d2 = (R + 2) ** 2;
@@ -418,9 +448,17 @@ export class Player {
     if (to !== undefined) m.node = to;
     else if (leaving) m.node = undefined;
     if (!segs.length) return;
-    // from where it is drawn now, then the arrows
+    // from where it is drawn now, then the arrows; still on its way, it goes
+    // the rest of that way first rather than cutting across to the new one
     const pts: Point[] = [{ x: m.x, y: m.y }];
     const jumps = new Set<number>();
+    const old = m.path;
+    if (old)
+      for (let i = 0; i < old.pts.length; i++) {
+        if (old.at[i] <= old.pos) continue;
+        pts.push(old.pts[i]);
+        if (old.jumps.has(i)) jumps.add(pts.length - 1);
+      }
     for (const s of segs) {
       if (s.jump) jumps.add(pts.length - 1);
       pts.push(...s.pts);
@@ -630,9 +668,9 @@ export class Player {
     const alert = css("--alert");
     const ink = css("--ink");
 
-    // the forward pass each engine runs now: a band across its top filling as it
-    // runs, and its budget bar at the pass's tokens (members of an array share the
-    // station: the latest pass among them)
+    // the forward pass each engine runs now, on its budget bar: the pass's
+    // tokens against the most any of its passes took, and how far it has run
+    // (members of an array share the station: the latest pass among them)
     const running = new Map<string, Iter>();
     for (const [stage, it] of this.iters) {
       if (this.t > it.t + it.dur) continue;
@@ -643,51 +681,15 @@ export class Player {
     for (const [name, b] of at.budgets) {
       const it = running.get(name);
       const peak = this.peak.get(name) ?? 1;
-      b.rect.setAttribute("width", String(it ? Math.max(1, b.full * (it.tokens / peak)) : 0));
-    }
-    for (const [name, it] of running) {
-      const box = at.stations.get(name);
-      if (!box) continue;
-      const done = Math.min(1, (this.t - it.t) / it.dur);
-      ctx.fillStyle = busy;
-      ctx.globalAlpha = 0.9;
-      ctx.fillRect(box.x + 1, box.y - 4, (box.w - 2) * done, 3);
-      ctx.globalAlpha = 1;
+      b.show(it ? { tokens: it.tokens, share: it.tokens / peak, done: Math.min(1, (this.t - it.t) / it.dur) } : null);
     }
 
-    // a veil over each occupied station's glyph, so its residents read over it
-    const occupied = new Map<string, { waiting: number; running: number }>();
-    for (const m of this.movers.values()) {
-      const w = m.where;
-      if (w.kind === "gone" || w.kind === "source" || m.away) continue;
-      const name = this.nodeOf(m);
-      if (!name || !at.stations.has(name)) continue;
-      const c = occupied.get(name) ?? { waiting: 0, running: 0 };
-      if (w.kind === "queue" || w.kind === "held") c.waiting++;
-      else c.running++;
-      occupied.set(name, c);
-    }
-    ctx.fillStyle = css("--veil");
-    for (const [name, c] of occupied) {
-      const box = at.stations.get(name)!;
-      if (c.running) ctx.fillRect(box.x + 1, box.y + 1, box.w - 2, box.h - 2);
-    }
-    // the tally under each station's bottom-right corner
-    ctx.font = "7px ui-monospace, Menlo, monospace";
-    ctx.textAlign = "right";
-    ctx.fillStyle = css("--dim");
-    for (const [name, c] of occupied) {
-      const box = at.stations.get(name)!;
-      const parts = [];
-      if (c.waiting) parts.push(`${c.waiting} waiting`);
-      if (c.running) parts.push(`${c.running} in`);
-      ctx.fillText(parts.join(" · "), box.x + box.w - 2, box.y + box.h + 9);
-    }
-    ctx.textAlign = "left";
-    // the sessions away at a stage the figure does not draw
+    // the sessions away at a stage the deployment does not draw
     const away = this.counts().away;
     if (away) {
       const s = this.sink();
+      ctx.font = "7px ui-monospace, Menlo, monospace";
+      ctx.fillStyle = css("--dim");
       ctx.fillText(`${away} at a tool`, s.x + 12, s.y + 8);
     }
 

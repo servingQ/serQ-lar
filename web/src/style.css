@@ -191,7 +191,6 @@ html[data-tab="code"] #main { display: none; }
 @media (max-width: 640px) { .prog-head { padding: 8px 12px; gap: 8px; } .prog-head .prog-pick { flex-basis: 100%; } }
 
 /* ---- which view shows what ---- */
-html[data-tab="replay"] [data-show]:not([data-show~="replay"]),
 html[data-tab="flow"] [data-show]:not([data-show~="flow"]),
 html[data-tab="metrics"] [data-show]:not([data-show~="metrics"]) { display: none !important; }
 /* off-stage, the figure stays laid out: the Flow view reads its graph off it */
@@ -225,34 +224,13 @@ html[data-tab="metrics"] [data-show]:not([data-show~="metrics"]) { display: none
 .inspector input { width: auto; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--ink); }
 .inspector .danger { color: var(--alert); }
 
-/* ---- Replay: serQ's figure, the player, the report ---- */
+/* ---- the replay on the Flow view: the banner, the player, the report ---- */
 .banner { font-size: 12px; color: var(--dim); }
 .banner:empty { display: none; }
 .banner b { color: var(--ink); font-variant-numeric: tabular-nums; }
-.view {
-  position: relative;
-  height: max(360px, calc(100dvh - 320px));
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  overflow: hidden;
-  touch-action: none;
-  cursor: grab;
-  user-select: none;
-  -webkit-user-select: none;
-  background: var(--figure);
-  box-shadow: var(--shadow);
-}
-@media (max-width: 640px) { .view { height: max(280px, 50dvh); } }
-.view:active { cursor: grabbing; }
+/* serQ's figure, laid out off the page as wide as the stage: the graph and its words are read off it */
+.view { position: relative; height: 400px; }
 .view svg { display: block; width: 100%; height: 100%; }
-.view.stale svg, .view.stale canvas { opacity: 0.35; }
-.view canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.view svg g[data-stage], .view svg g[data-pool] { cursor: pointer; }
-.view svg g.selected { filter: drop-shadow(0 0 1.5px var(--decode)) drop-shadow(0 0 4px var(--decode)); }
-.view svg [data-copy] { cursor: pointer; }
-.zoom { position: absolute; top: 10px; right: 10px; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--raised) 85%, transparent); backdrop-filter: blur(6px); box-shadow: var(--shadow); cursor: default; }
-.zoom button { height: 24px; min-width: 26px; padding: 0 8px; border: none; border-radius: 7px; background: transparent; box-shadow: none; }
-.zoom button:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 .zoom span { font-size: 11px; color: var(--dim); min-width: 3.4em; text-align: center; font-variant-numeric: tabular-nums; }
 .diag { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 3; margin: 0; max-height: 45%; overflow: auto; padding: 10px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--alert); background: color-mix(in srgb, var(--alert) 7%, var(--raised)); border: 1px solid color-mix(in srgb, var(--alert) 50%, var(--line)); border-radius: 10px; box-shadow: var(--shadow-lg); cursor: pointer; }
 .diag[hidden] { display: none; }
@@ -353,7 +331,7 @@ html[data-tab="metrics"] [data-show]:not([data-show~="metrics"]) { display: none
 #observes-box[hidden] { display: none; }
 
 /* ---- Flow: serQ's deployment as nodes to drag and wire (React Flow) ---- */
-.flow { position: relative; min-height: 420px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--raised); box-shadow: var(--shadow); }
+.flow { position: relative; min-height: max(420px, calc(100dvh - 330px)); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--raised); box-shadow: var(--shadow); }
 .flow .react-flow { --xy-background-color: var(--raised); --xy-minimap-background-color: var(--panel); --xy-controls-button-background-color: var(--raised); --xy-controls-button-background-color-hover: var(--panel); --xy-controls-button-color: var(--ink); --xy-controls-button-border-color: var(--line); --xy-background-pattern-color: var(--line); }
 .flow .react-flow__controls, .flow .react-flow__minimap { border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--line); }
 .flow .react-flow__controls-button { width: 28px; height: 28px; border-radius: 0; box-shadow: none; padding: 4px; }
@@ -366,6 +344,28 @@ html[data-tab="metrics"] [data-show]:not([data-show~="metrics"]) { display: none
 .fnode.k-decision { border-style: dotted; }
 .fnode.k-source, .fnode.k-sink { border-style: dashed; background: transparent; box-shadow: none; }
 .fnode.k-draft { border-style: dashed; border-color: var(--busy); }
+.fhead { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; min-width: 0; }
+/* the name keeps its room; a long count goes under it */
+.fhead b { max-width: 100%; }
+/* how many sessions are in the station and wait at it, as the replay goes */
+.fcount { margin-left: auto; flex: none; font-family: var(--font-mono); font-size: 9.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.fcount.busy { color: var(--busy); }
+.fnode small.fnote { font-family: var(--font-mono); font-size: 9.5px; }
+/* the strip a station's sessions sit in; its waiting line forms left of the card */
+.flane { height: 20px; margin-top: 4px; border-radius: 5px; background: color-mix(in srgb, var(--line) 35%, transparent); }
+/* an engine's forward pass: its tokens against the most a pass took, and a line as it runs */
+.fbudget { position: relative; height: 5px; margin-top: 4px; border-radius: 3px; background: color-mix(in srgb, var(--line) 60%, transparent); overflow: hidden; }
+.fbudget i { position: absolute; inset: 0 auto 0 0; width: calc(var(--share, 0) * 100%); background: var(--busy); opacity: .85; }
+.fbudget s { position: absolute; left: 0; bottom: 0; height: 1.5px; width: calc(var(--done, 0) * 100%); background: var(--ink); text-decoration: none; }
+/* the replay: over the nodes and edges, under React Flow's panels (z-index 5) */
+.flow-box { flex: 1 0 auto; }
+/* serQ's words on an arrow: a line each, over its middle */
+.flabel { position: absolute; display: flex; flex-direction: column; align-items: center; padding: 1px 4px; border-radius: 4px; background: color-mix(in srgb, var(--raised) 88%, transparent); font-family: var(--font-mono); font-size: 9.5px; line-height: 12px; color: var(--ink); white-space: nowrap; pointer-events: none; }
+.flabel span + span { color: var(--dim); }
+/* the words over the cards: an arrow between two close cards would hide them */
+.flow .react-flow__edgelabel-renderer { z-index: 1001; }
+.flow-replay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; }
+.flow.stale .react-flow__viewport, .flow.stale .flow-replay { opacity: 0.35; }
 .finstance { width: 100%; height: 100%; padding: 3px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1.2px solid color-mix(in srgb, var(--ink) 38%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--panel) 55%, transparent); color: var(--ink); font-size: 11px; }
 .finstance span { font-family: var(--font-mono); white-space: nowrap; }
 .finstance small { margin-left: 6px; color: var(--dim); font-family: var(--font-sans); }
@@ -375,7 +375,11 @@ html[data-tab="metrics"] [data-show]:not([data-show~="metrics"]) { display: none
 .fpool.k-blocks i { color: var(--decode); background: color-mix(in srgb, var(--decode) 22%, transparent); }
 .fpool.k-slots i { color: var(--prefill); background: color-mix(in srgb, var(--prefill) 22%, transparent); }
 .fpool span { font-family: var(--font-mono); }
+.fpool { flex-wrap: wrap; cursor: pointer; }
+.fpool:hover span { text-decoration: underline; }
 .fpool small { margin-left: auto; color: var(--dim); }
+/* serQ's words on the pool past its capacity: block, evict, preempt, admitted by */
+.fpool em { flex-basis: 100%; padding-left: 14px; font-style: normal; font-size: 9px; line-height: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fpool.unused { opacity: .75; }
 .fpool.unused i { border-style: dashed; background: none; }
 .ftools { display: flex; gap: 4px; align-items: center; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--raised); box-shadow: var(--shadow-lg); font-size: 11px; }

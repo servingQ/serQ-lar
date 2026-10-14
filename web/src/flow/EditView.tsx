@@ -11,6 +11,8 @@
 // canvas is a draft where it lands, on a station called by it; a memory
 // pool on an engine is declared there; an arrow or a KV transfer on a
 // station starts there, and the station clicked next is its other end.
+// The run plays over it (replay.ts): a canvas above the nodes and edges,
+// under the panels, which the page's player draws on.
 
 import {
   Background,
@@ -18,6 +20,7 @@ import {
   type Connection,
   Controls,
   type Edge,
+  EdgeLabelRenderer,
   type EdgeProps,
   getSmoothStepPath,
   Handle,
@@ -38,7 +41,9 @@ import "@xyflow/react/dist/style.css";
 import { createContext, type DragEvent, type FormEvent, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Draft } from "../edit";
+import type { View } from "../player";
 import { type Graph, type GraphInstance, type GraphNode, SINK, SOURCE } from "./graph";
+import { flowTransform, type Placed, toAnchor } from "./replay";
 import { avoid, labelAt, type Point, pathOf, route } from "./route";
 
 export interface EditHost {
@@ -64,6 +69,19 @@ export interface EditHost {
   say(message: string, bad?: boolean): void;
   /** Open the Code tab on where a node is written. */
   code(id: string): void;
+  /** A pool chosen: its part of the run's report. */
+  report(pool: string): void;
+  /** The nodes moved, were measured, or their arrows were drawn again: the replay is placed again. */
+  placed(): void;
+}
+
+/** What the replay draws over the Flow view with: its canvas, the viewport,
+ * each node as it stands, and the anchor point under a point of the screen. */
+export interface ReplaySurface {
+  canvas: HTMLCanvasElement;
+  view: View;
+  placed(): Map<string, Placed>;
+  toAnchor(clientX: number, clientY: number): Point;
 }
 
 /** A node the sidebar makes: an engine, a delay, or a pool of `count` engines. */
@@ -99,32 +117,57 @@ type SerqNodeT = Node<{ node: GraphNode; nic?: boolean }, "serq">;
 type InstanceNodeT = Node<{ instance: GraphInstance }, "instance">;
 type FlowNode = SerqNodeT | InstanceNodeT;
 
-/** A node: serQ's name and kind, an input on its left and an output on its
- * right, and the memory pools it holds. A station chosen has its edits on a
- * toolbar above it. */
+/** A node: serQ's name and kind and its note, an input on its left and an
+ * output on its right, and the memory pools it holds. A station has a lane
+ * its sessions sit in during the replay, and a count of them the page keeps
+ * (`.fcount`); an engine, the bar its forward pass fills. A station chosen
+ * has its edits on a toolbar above it. */
 function SerqNode({ id, data, parentId, selected }: NodeProps<SerqNodeT>) {
   const n = data.node;
+  const host = useContext(Host)!;
   const nicDraft = n.kind === "draft" && n.draft?.kind === "nic";
   const input = n.kind !== "source" && !nicDraft;
   const output = n.kind !== "sink" && (n.kind !== "draft" || nicDraft);
+  const station = n.kind === "engine" || n.kind === "nic" || n.kind === "station" || n.kind === "delay";
   return (
-    <div className={`fnode k-${n.kind}`} title={n.sub}>
+    <div className={`fnode k-${n.kind}`} title={[n.title ?? n.label, n.sub, n.note].filter(Boolean).join("\n")}>
       {input && <Handle type="target" position={Position.Left} />}
-      <b>{n.label}</b>
+      <div className="fhead">
+        <b>{n.title ?? n.label}</b>
+        {station && <span className="fcount" aria-live="off" />}
+      </div>
       <small>{n.sub}</small>
+      {n.note && <small className="fnote">{n.note}</small>}
+      {station && <div className="flane" aria-hidden="true" />}
+      {n.kind === "engine" && (
+        <div className="fbudget" aria-hidden="true">
+          <i />
+          <s />
+        </div>
+      )}
       {n.pools?.length ? (
         <ul className="fpools" aria-label={`${n.label}'s memory pools`}>
           {n.pools.map((p) => (
             <li
               key={p.id}
               className={`fpool k-${p.kind}${p.drawn ? "" : " unused"}`}
-              title={`pool ${p.id}: ${p.kind === "blocks" ? "KV blocks" : "request slots"}, cap ${p.cap}${p.drawn ? "" : "; no hold takes it yet, so serQ's figure does not draw it"}`}
+              title={
+                (p.words?.length ? p.words.join("\n") : `pool ${p.id}: ${p.kind === "blocks" ? "KV blocks" : "request slots"}, cap ${p.cap}`) +
+                (p.cache ? "\nprefix cache" : "") +
+                (p.drawn ? "\n(click: its part of the report)" : "\nno hold takes it yet, so serQ's figure does not draw it")
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                host.report(p.id);
+              }}
             >
               <i aria-hidden="true" />
               <span>{p.name}</span>
               <small>
                 {p.cap} {p.kind === "blocks" ? "tok" : "slots"}
+                {p.cache ? " · cache" : ""}
               </small>
+              {p.words?.[1] && <em>{p.words[1].replace(/^cap \S+( · )?/, "")}</em>}
             </li>
           ))}
         </ul>
@@ -299,8 +342,9 @@ function InstanceNode({ data }: NodeProps<InstanceNodeT>) {
 }
 const nodeTypes = { serq: SerqNode, instance: InstanceNode };
 
-/** An arrow along libavoid's route; until libavoid has loaded, React Flow's own step path. */
-function RoutedEdge(p: EdgeProps<Edge<{ route?: Point[]; poster?: string }>>) {
+/** An arrow along libavoid's route; until libavoid has loaded, React Flow's
+ * own step path. serQ's words on it stand over its middle, a line each. */
+function RoutedEdge(p: EdgeProps<Edge<{ route?: Point[]; poster?: string; words?: string[] }>>) {
   const r = p.data?.route;
   let path: string;
   let at: Point;
@@ -312,18 +356,20 @@ function RoutedEdge(p: EdgeProps<Edge<{ route?: Point[]; poster?: string }>>) {
     path = d;
     at = { x, y };
   }
+  const words = p.data?.words;
   return (
-    <BaseEdge
-      id={p.id}
-      path={path}
-      markerEnd={p.markerEnd}
-      style={p.style}
-      label={p.label}
-      labelX={at.x}
-      labelY={at.y}
-      labelBgPadding={[3, 1]}
-      interactionWidth={p.interactionWidth}
-    />
+    <>
+      <BaseEdge id={p.id} path={path} markerEnd={p.markerEnd} style={p.style} interactionWidth={p.interactionWidth} />
+      {words?.length ? (
+        <EdgeLabelRenderer>
+          <div className="flabel" style={{ transform: `translate(-50%, -100%) translate(${at.x}px, ${at.y - 3}px)` }}>
+            {words.map((w, i) => (
+              <span key={i}>{w}</span>
+            ))}
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+    </>
   );
 }
 const edgeTypes = { routed: RoutedEdge };
@@ -376,12 +422,13 @@ function edgesOf(g: Graph): Edge[] {
       // over the instances' panels, which an arrow may cross
       zIndex: 1,
       className: copy ? `copy ${e.copy}` : e.kind,
-      label: copy ? e.copy : undefined,
+
       ariaLabel: copy ? `KV copy ${e.from} to ${e.to}, a ${e.copy}: ${poster} ${e.copy === "pull" ? "starts each read" : "posts each write"}` : undefined,
       interactionWidth: copy ? 24 : 12,
       style: { stroke: colour, strokeWidth: copy ? 2 : 1.4, strokeDasharray: copy ? "6 4" : undefined },
       markerEnd: { type: MarkerType.ArrowClosed, color: colour, width: 16, height: 16 },
-      data: { poster: e.poster },
+      // serQ's words on the arrow: a condition, an exit's, a copy's way and latency
+      data: { poster: e.poster, words: e.words?.length ? e.words : copy && e.copy ? [e.copy] : undefined },
     };
   });
 }
@@ -421,7 +468,10 @@ function absolute(nodes: FlowNode[], n: FlowNode) {
   return g ? { x: g.position.x + n.position.x, y: g.position.y + n.position.y } : n.position;
 }
 
-function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => void) => void }) {
+/** The whole graph in view, with room on the right for the sessions parked past the out node. */
+const fitOptions = () => ({ padding: { top: 0.12, bottom: 0.12, left: 0.12, right: "110px" as const }, maxZoom: 1.1 });
+
+function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => void, surface: ReplaySurface) => void }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [graph, setGraph] = useState<Graph | null>(null);
@@ -431,7 +481,37 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
   /** The stations shown so far: a new one fits the view again, so that it is in sight. */
   const seen = useRef(new Set<string>());
 
-  useEffect(() => bind(setGraph), [bind]);
+  const canvas = useRef<HTMLCanvasElement>(null);
+
+  useEffect(
+    () =>
+      bind(setGraph, {
+        canvas: canvas.current!,
+        view: { transform: (dpr) => flowTransform(flow.getViewport(), dpr) },
+        placed() {
+          const now = flow.getNodes() as FlowNode[];
+          const { zoom } = flow.getViewport();
+          const out = new Map<string, Placed>();
+          for (const n of now) {
+            if (n.type !== "serq") continue;
+            const p = absolute(now, n);
+            const box = { x: p.x, y: p.y, ...sizeOf(n) };
+            const el = document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(n.id)}"]`);
+            const lane = el?.querySelector<HTMLElement>(".flane");
+            let laneBox;
+            if (el && lane) {
+              const r = el.getBoundingClientRect();
+              const l = lane.getBoundingClientRect();
+              laneBox = { x: p.x + (l.left - r.left) / zoom, y: p.y + (l.top - r.top) / zoom, w: l.width / zoom, h: l.height / zoom };
+            }
+            out.set(n.id, { box: { x: box.x, y: box.y, w: box.w, h: box.h }, lane: laneBox, bar: el?.querySelector<HTMLElement>(".fbudget") ?? undefined });
+          }
+          return out;
+        },
+        toAnchor: (x, y) => toAnchor(flow.screenToFlowPosition({ x, y })),
+      }),
+    [bind, flow],
+  );
   useEffect(() => {
     avoid().then(setA, (e) => console.error("libavoid did not load; the arrows keep React Flow's paths", e));
   }, []);
@@ -480,7 +560,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
     setEdges(edgesOf(graph));
     const fresh = graph.nodes.some((n) => n.kind !== "draft" && !seen.current.has(n.id));
     seen.current = new Set(graph.nodes.map((n) => n.id));
-    if (fresh) requestAnimationFrame(() => flow.fitView({ padding: 0.12, maxZoom: 1.1 }));
+    if (fresh) requestAnimationFrame(() => flow.fitView(fitOptions()));
   }, [graph, host, place, setNodes, setEdges, flow]);
 
   // the routes follow the nodes: after a new graph, a drag, a node's size measured
@@ -498,6 +578,12 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
   }, [A, nodes, edges]);
 
   const routed = useMemo(() => edges.map((e) => ({ ...e, data: { ...e.data, route: routes.get(e.id) } })), [edges, routes]);
+
+  // a node dragged or measured, an arrow routed again: the replay follows, once React Flow has drawn them
+  useEffect(() => {
+    const id = requestAnimationFrame(() => host.placed());
+    return () => cancelAnimationFrame(id);
+  }, [nodes, routed, host]);
 
   // only what was dragged is kept, on the canvas: the rest follows serQ's layout as the program changes
   const keep = useCallback(
@@ -631,7 +717,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
     dropped.clear();
     if (!graph) return;
     setNodes(place(graph, {}));
-    requestAnimationFrame(() => flow.fitView({ padding: 0.12, maxZoom: 1.1 }));
+    requestAnimationFrame(() => flow.fitView(fitOptions()));
   }, [graph, host, place, setNodes, flow]);
 
   return (
@@ -675,6 +761,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
           proOptions={{ hideAttribution: true }}
         >
           <Background gap={32} size={1} />
+          <canvas ref={canvas} className="flow-replay" aria-hidden="true" />
           <Controls />
           <MiniMap pannable zoomable />
           <Panel position="top-right">
@@ -698,12 +785,16 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
   );
 }
 
-/** Mount the Edit view in `el`. `show` gives it serQ's graph, now and after every redraw. */
-export function mountEditView(el: HTMLElement, host: EditHost): { show(g: Graph): void } {
+/** Mount the Edit view in `el`. `show` gives it serQ's graph, now and after
+ * every redraw; `surface` is what the replay draws over it with, once mounted. */
+export function mountEditView(el: HTMLElement, host: EditHost): { show(g: Graph): void; surface: Promise<ReplaySurface> } {
   let setGraph: ((g: Graph) => void) | null = null;
   let pending: Graph | null = null;
-  const bind = (f: (g: Graph) => void) => {
+  let ready!: (s: ReplaySurface) => void;
+  const surface = new Promise<ReplaySurface>((r) => (ready = r));
+  const bind = (f: (g: Graph) => void, s: ReplaySurface) => {
     setGraph = f;
+    ready(s);
     if (pending) f(pending);
   };
   createRoot(el).render(
@@ -714,6 +805,7 @@ export function mountEditView(el: HTMLElement, host: EditHost): { show(g: Graph)
     </ReactFlowProvider>,
   );
   return {
+    surface,
     show(g: Graph) {
       if (setGraph) setGraph(g);
       else pending = g;

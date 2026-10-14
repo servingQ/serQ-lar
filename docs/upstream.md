@@ -300,7 +300,12 @@ Issue draft:
 > ```
 > `src/view/deployment.rs`의 `BoxStyle::Instance` 항목에 `nodes`(패널의 노드 이름, 화살표의 `data-from`/`data-to`와 같은 이름)를 채우고, `src/view/svg.rs`가 브래킷과 같은 방식으로 `data-nodes`를 쓰되 역할은 `data-role="instance"`로 적는다(지금은 `nodes`가 있으면 무조건 `bracket`). `tests/draw.rs`에 예제마다 패널의 `data-nodes`가 그림의 노드인지 확인하는 검사를 둔다.
 
-## U16. The figure's dark colours, on the page's word
+## U16. The figure's dark colours, on the page's word — moot
+
+The page no longer shows serQ's figure (it is laid out off the page, and
+the Flow view draws serQ's graph), so its theme no longer matters here;
+`themeFigure()` is gone. The issue stands for any page that inlines the
+SVG.
 
 serQ's SVG carries its own dark palette under
 `@media (prefers-color-scheme: dark)` (`src/view/svg.rs`, `stylesheet()`),
@@ -358,3 +363,37 @@ file each diagnostic and outline range is in; and to say, from the
 signature, whether a pair fits, so the picker can mark the ones that do
 not without the page reading the programs. A single-file program keeps
 working.
+
+## U19. The figure's words, on what they label
+
+The Flow view writes serQ's words on its cards and arrows: a station's
+name over it (`P[i]`) and note under it (`tokens cap 8192`, a NIC's rate,
+a delay's `~exp(3)`), a pool's lines beside its drum, a branch's condition
+(`remote_prefill`, `else`), an exit's (`out (K + n >= 16384)`), a copy's
+way and latency, the arrival's process. In the SVG each is a bare
+`<text>` at a place: nothing says what it labels. Stopgap: `wordsOf` in
+`web/src/flow/graph.ts` takes each by where serQ's writer puts it
+(`src/view/deployment.rs`): a node's name and note on its centre line,
+just over and under it; a pool's lines just right of its drum; the rest,
+the nearest arrow's. A change to the writer's spacing would move a word
+to the wrong place without an error. Issue draft:
+
+> **배포 그림의 글자가 무엇을 가리키는지 SVG에 적기**
+>
+> 배포 그림의 글자(노드 이름·주석, 풀 설명, 분기 조건, exit 조건, copy 경로·latency, 도착 과정)는 SVG에서 좌표만 가진 `<text>`라, 그림을 읽는 쪽(serq-lar의 Flow view)은 위치로 짝을 찾는다. drum은 `data-pool`, 화살표는 `data-from`/`data-to`를 적는데 그 옆 글자는 적지 않는다.
+>
+> Before (`serq draw examples/pd-disaggregation/llmd_nixl_pull.sq`):
+> ```
+> <text x="475.2" y="133" … >P[i]</text>
+> <text x="475.2" y="206" … class="dim">tokens cap 8192</text>
+> <text x="376" y="272" … class="dim">cap 160000 · block 16 · evict lru · preempt lifo</text>
+> <text x="252" y="159" … class="dim">remote_prefill</text>
+> ```
+> After:
+> ```
+> <text x="475.2" y="133" … data-for="P" data-role="name">P[i]</text>
+> <text x="475.2" y="206" … class="dim" data-for="P" data-role="note">tokens cap 8192</text>
+> <text x="376" y="272" … class="dim" data-pool="P.kv" data-role="note">cap 160000 · block 16 · evict lru · preempt lifo</text>
+> <text x="252" y="159" … class="dim" data-from="#0" data-to="P" data-role="label">remote_prefill</text>
+> ```
+> `figure::Item::Text`에 무엇의 글자인지(노드, 풀, 화살표, 인스턴스, 도착)와 역할(name, note, label)을 담는 필드를 두고, `deployment.rs`의 `f.text`/`f.note` 호출(20곳)이 채우며, `svg.rs`가 drum·화살표와 같은 이름의 `data-*`로 적는다. U15(인스턴스 패널의 `data-nodes`)와 함께 하면 Flow view가 그림을 위치로 읽는 곳이 없어진다. `tests/draw.rs`에 예제마다 모든 `<text>`가 그림의 노드·풀·화살표를 가리키는지 확인하는 검사를 둔다.

@@ -1,13 +1,13 @@
 import "./style.css";
 import { EditorView } from "@codemirror/view";
-import { anchors } from "./anchors";
-import { Camera } from "./camera";
+import { anchors, type Anchors } from "./anchors";
 import { Compose } from "./compose";
 import type { Draft, From, To } from "./edit";
 import { Dashboard, withGauges } from "./dashboard";
 import { Editor } from "./editor";
-import { graphOf, SINK, SOURCE, draftId } from "./flow/graph";
-import type { EditHost } from "./flow/EditView";
+import { graphOf, SINK, SOURCE, draftId, type Graph } from "./flow/graph";
+import type { EditHost, ReplaySurface } from "./flow/EditView";
+import { flowAnchors } from "./flow/replay";
 import type { Log } from "./events";
 import { kinds, outline as readOutline, type Outline } from "./outline";
 import { showCrossing } from "./crossing";
@@ -30,11 +30,11 @@ const RUN_AFTER = 700;
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const root = document.documentElement;
 const select = $<HTMLSelectElement>("program");
+/** serQ's figure, laid out off the page: the Flow view's graph and words are read off it. */
 const view = $<HTMLDivElement>("view");
-const canvas = $<HTMLCanvasElement>("overlay");
+const flowEl = $<HTMLDivElement>("flow");
 const tip = $<HTMLDivElement>("tip");
 const diag = $<HTMLPreElement>("diag");
-const zoomLevel = $<HTMLSpanElement>("zoom-level");
 const status = $<HTMLSpanElement>("status");
 const play = $<HTMLButtonElement>("play");
 const step = $<HTMLButtonElement>("step");
@@ -75,9 +75,9 @@ const runner = new Serq();
 
 // ------------------------------------------------------------ view ----
 
-const camera = new Camera(view);
-camera.onChange = () => (zoomLevel.textContent = `${Math.round(camera.level * 100)}%`);
 let player: Player | null = null;
+/** The last run's log, waiting for the Flow view to be there to replay it on. */
+let pending: { log: Log; ir: string; H: number } | null = null;
 /** Counts edits: an answer for an older one is dropped. */
 let generation = 0;
 /** What the figure on the page was drawn from, and the run replayed over it. */
@@ -93,26 +93,14 @@ let selected: Selection = null;
 let metricsSelected: Selection = null;
 let runTimer = 0;
 
-/** serQ's figure keys its dark colours on the system's theme alone; while the
- * page forces one, its media query is made to say so. Stopgap: docs/upstream.md U16. */
-const SYSTEM_DARK = "(prefers-color-scheme: dark)";
-function themeFigure() {
-  const style = view.querySelector<SVGStyleElement>("svg style");
-  if (!style) return;
-  const media = { dark: "all", light: "not all" }[root.dataset.theme ?? ""] ?? SYSTEM_DARK;
-  style.textContent = (style.textContent ?? "").replace(/@media (\(prefers-color-scheme: dark\)|all|not all) \{/, `@media ${media} {`);
-}
-
 /** serQ refused the text: the last figure stays, dimmed, under serQ's words. */
 function fail(message: string) {
   status.textContent = "error";
   root.classList.remove("busy");
   root.classList.add("failed");
-  view.classList.add("stale");
+  flowEl.classList.add("stale");
   report.classList.add("stale");
   metrics.classList.add("stale");
-  // Flow has no text beside it: serQ's words go where its edits are answered
-  if (tab === "flow") sayIt(message, true);
   if (player) player.playing = false;
   showPlaying(false);
   diag.textContent = message;
@@ -144,7 +132,7 @@ async function redraw(runNow = false) {
   editor.diagnose(null);
   // a run is for the IR, the horizon and the seed; a comment or a space changes none
   const key = `${irJson.value}\u0000${horizon.value}\u0000${seed.value}`;
-  view.classList.remove("stale");
+  flowEl.classList.remove("stale");
   const same = drawnFrom !== null && drawnFrom.svg === drawn.value && drawnFrom.ir === irJson.value;
   if (!same) {
     drawnFrom = { svg: drawn.value, ir: irJson.value };
@@ -153,19 +141,15 @@ async function redraw(runNow = false) {
     const svg = view.querySelector("svg")!;
     svg.removeAttribute("width");
     svg.removeAttribute("height");
-    themeFigure();
-    const vb = svg.viewBox.baseVal;
-    camera.figure(vb.width, vb.height);
     player?.stop();
     player = null;
+    pending = null;
     ranFor = null;
-    markSelected();
   }
   showGraph();
   root.classList.remove("busy", "failed");
   status.textContent = `drawn in ${drawn.ms.toFixed(1)} ms` + (key === ranFor ? ranNote : "");
   if (key === ranFor) {
-    view.classList.remove("stale");
     report.classList.remove("stale");
     metrics.classList.remove("stale");
     return;
@@ -199,16 +183,27 @@ async function runIt(gen: number, key: string) {
   report.classList.remove("stale");
   metrics.classList.remove("stale");
   showReport();
-  const at = anchors(svg);
+  figureAt = anchors(svg);
   ranNote = ` · ran ${H} s of simulated time in ${ran.ms.toFixed(0)} ms`;
   status.textContent = status.textContent.replace(" · running…", "") + ranNote;
   root.classList.remove("busy");
   const n = log.events.length.toLocaleString("en");
   banner.innerHTML = `Replaying serQ's log of this run: <b>${n}</b> events over ${H} s, seed ${S}.` +
     (log.truncated ? ` The log stopped at the cap of ${LOG_CAP.toLocaleString("en")} events; the run went on.` : "") +
-    (at.stations.size === 0 ? " No station in this figure: nothing to place the sessions on." : "");
+    (figureAt.stations.size === 0 ? " No station in this figure: nothing to place the sessions on." : "");
   player?.stop();
-  player = new Player(log, at, poolStages(JSON.parse(drawnFrom.ir)), canvas, H, camera);
+  player = null;
+  pending = { log, ir: drawnFrom.ir, H };
+  startReplay();
+}
+
+/** Replay the run waiting, once the Flow view is there to place it on. */
+function startReplay() {
+  const on = places();
+  if (!pending || !on || !flowSurface) return;
+  const { log, ir, H } = pending;
+  pending = null;
+  player = new Player(log, on, poolStages(JSON.parse(ir)), flowSurface.canvas, H, flowSurface.view);
   scrub.max = String(H);
   scrub.value = "0";
   player.speed = Number(speed.value);
@@ -248,25 +243,29 @@ function tick(t: number) {
   counts.textContent = `${c.queue} waiting · ${c.resident} in a station` + (c.away ? ` · ${c.away} at a tool` : "");
   if (!player.playing) showPlaying(false);
   dashboard.cursor(t);
+  countStations();
+}
+
+/** Each station's card says how many sessions wait at it and are in it. */
+function countStations() {
+  const occ = player?.occupancy() ?? new Map<string, { waiting: number; running: number }>();
+  for (const el of flowEl.querySelectorAll<HTMLElement>(".react-flow__node[data-id] .fcount")) {
+    const id = el.closest<HTMLElement>(".react-flow__node")!.dataset.id!;
+    const c = occ.get(id);
+    const text = c ? [c.running ? `${c.running} in` : "", c.waiting ? `${c.waiting} waiting` : ""].filter(Boolean).join(" · ") : "";
+    if (el.textContent !== text) el.textContent = text;
+    el.classList.toggle("busy", !!c?.running);
+  }
 }
 
 // ------------------------------------------------------------ report ----
 
-/** The report: under the figure, the chosen component's part (nothing
- * until one is chosen), with that component lit in the figure; in Metrics,
- * all of it or the component chosen there. */
+/** The report: under the Flow view, the part of the station or pool chosen
+ * there (nothing until one is); in Metrics, all of it or the component
+ * chosen there. */
 function showReport() {
   report.innerHTML = last && selected ? render(last, selected, false) : "";
   reportAll.innerHTML = last ? render(last, metricsSelected) : "";
-  markSelected();
-}
-
-function markSelected() {
-  for (const g of view.querySelectorAll<SVGGElement>("svg g[data-stage], svg g[data-pool]")) {
-    const kind = g.dataset.stage !== undefined ? "stage" : "pool";
-    const name = kind === "stage" ? g.dataset.stage : g.dataset.pool;
-    g.classList.toggle("selected", selected !== null && selected.kind === kind && selected.name === name);
-  }
 }
 
 const same = (a: Selection, b: Selection) => !!a && !!b && a.kind === b.kind && a.name === b.name;
@@ -305,94 +304,44 @@ diag.addEventListener("click", () => {
 
 // ------------------------------------------------------------ pointer ----
 
-function showTip(e: PointerEvent) {
-  const p = camera.toFigure(e.clientX, e.clientY);
-  const hit = player ? player.hit(p.x, p.y) : null;
+/** The session under a client point, on the Flow view. */
+function hitAt(e: MouseEvent) {
+  if (!player || !flowSurface) return null;
+  const p = flowSurface.toAnchor(e.clientX, e.clientY);
+  return player.hit(p.x, p.y);
+}
+
+flowEl.addEventListener("pointermove", (e) => {
+  const hit = e.buttons ? null : hitAt(e);
   if (!hit) {
     tip.hidden = true;
     return;
   }
   tip.textContent = hit.text;
-  const r = view.getBoundingClientRect();
+  const r = flowEl.getBoundingClientRect();
   tip.hidden = false;
   // to the right of the pointer, or to its left near the edge
   const x = e.clientX - r.left;
   const flip = x + 12 + tip.offsetWidth > r.width;
   tip.style.left = `${flip ? x - 12 - tip.offsetWidth : x + 12}px`;
   tip.style.top = `${Math.min(e.clientY - r.top + 12, r.height - tip.offsetHeight - 4)}px`;
-}
-
-/** A click on the figure: a session pins, a station or a drum chooses its component in the report. */
-function click(e: PointerEvent) {
-  const p = camera.toFigure(e.clientX, e.clientY);
-  const hit = player ? player.hit(p.x, p.y) : null;
-  if (player) player.pinned = hit && player.pinned !== hit.mover.key ? hit.mover.key : null;
-  if (hit) return;
-  // the press captured the pointer, so the event's target is the view: ask what is under it
-  const under = document.elementFromPoint(e.clientX, e.clientY);
-  const g = under?.closest<SVGGElement>("g[data-stage], g[data-pool]");
-  if (!g) return;
-  choose(g.dataset.stage !== undefined ? { kind: "stage", name: g.dataset.stage } : { kind: "pool", name: g.dataset.pool ?? "" });
-}
-
-// Drag pans, two fingers pinch, the wheel zooms about the pointer; a press
-// that does not move is a click.
-const down = new Map<number, { x: number; y: number }>();
-let moved = false;
-let pinch = 0;
-view.addEventListener("pointerdown", (e) => {
-  if ((e.target as Element).closest(".zoom, .diag")) return;
-  down.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  view.setPointerCapture(e.pointerId);
-  moved = false;
-  if (down.size === 2) {
-    const [a, b] = [...down.values()];
-    pinch = Math.hypot(a.x - b.x, a.y - b.y);
-  }
 });
-view.addEventListener("pointermove", (e) => {
-  const was = down.get(e.pointerId);
-  if (!was) return showTip(e);
-  const dx = e.clientX - was.x;
-  const dy = e.clientY - was.y;
-  if (!moved && Math.hypot(dx, dy) < 4) return;
-  moved = true;
-  tip.hidden = true;
-  down.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (down.size === 2) {
-    const [a, b] = [...down.values()];
-    const d = Math.hypot(a.x - b.x, a.y - b.y);
-    const r = view.getBoundingClientRect();
-    if (pinch > 0) camera.zoomAt((a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top, d / pinch);
-    pinch = d;
-  } else camera.pan(dx, dy);
-});
-const lift = (e: PointerEvent) => {
-  if (!down.delete(e.pointerId)) return;
-  if (down.size < 2) pinch = 0;
-  if (!moved && down.size === 0 && e.type === "pointerup") click(e);
-};
-view.addEventListener("pointerup", lift);
-view.addEventListener("pointercancel", lift);
-view.addEventListener("pointerleave", () => (tip.hidden = true));
-view.addEventListener(
-  "wheel",
+flowEl.addEventListener("pointerleave", () => (tip.hidden = true));
+// a click on a session pins it, before React Flow takes the click for a node or the pane
+flowEl.addEventListener(
+  "click",
   (e) => {
-    e.preventDefault();
-    const r = view.getBoundingClientRect();
-    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
-    camera.zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-dy * 0.0015));
+    if (!player) return;
+    const hit = hitAt(e);
+    if (!hit) {
+      player.pinned = null;
+      return;
+    }
+    player.pinned = player.pinned !== hit.mover.key ? hit.mover.key : null;
+    e.stopPropagation();
   },
-  { passive: false },
+  { capture: true },
 );
-view.addEventListener("dblclick", (e) => {
-  if (!(e.target as Element).closest(".zoom, .diag")) camera.fit();
-});
-$<HTMLButtonElement>("zoom-in").onclick = () => camera.zoom(1.25);
-$<HTMLButtonElement>("zoom-out").onclick = () => camera.zoom(0.8);
-$<HTMLButtonElement>("zoom-fit").onclick = () => camera.fit();
-
-// ------------------------------------------------------------ wiring ----
 
 // ------------------------------------------------------------ editing ----
 
@@ -415,14 +364,12 @@ const compose = new Compose(
 );
 // ------------------------------------------------------------ the views ----
 
-/** Replay: serQ's figure with the run over it. Flow: the same deployment as
- * nodes to drag and wire, and the parts to drop onto it. Code: the program,
- * the width of the page. Metrics: the run's numbers over time, and the
- * report. */
-type Tab = "replay" | "flow" | "code" | "metrics";
-const TABS: Tab[] = ["replay", "flow", "code", "metrics"];
-let tab: Tab = "replay";
-const flowEl = $<HTMLDivElement>("flow");
+/** Flow: the deployment, serQ's graph with its words, the run replayed over
+ * it, the parts to drop onto it. Code: the program, the width of the page.
+ * Metrics: the run's numbers over time, and the report. */
+type Tab = "flow" | "code" | "metrics";
+const TABS: Tab[] = ["flow", "code", "metrics"];
+let tab: Tab = "flow";
 const replayPane = $<HTMLDivElement>("replay-pane");
 const mainEl = $<HTMLElement>("main");
 const tabButtons = [...document.querySelectorAll<HTMLButtonElement>(".tabbar button[data-tab]")];
@@ -447,8 +394,17 @@ const editHost: EditHost = {
     compose.link(a.from ?? null, b.to, a.nic);
   },
   select(id) {
-    compose.choose(id && !id.startsWith("#") && id !== SOURCE && id !== SINK && !id.startsWith("draft:") ? id : null);
+    const station = id && !id.startsWith("#") && id !== SOURCE && id !== SINK && !id.startsWith("draft:") ? id : null;
+    compose.choose(station);
+    // and its part of the run's report, under the view
+    selected = station ? { kind: "stage", name: station } : null;
+    showReport();
   },
+  report(pool) {
+    selected = { kind: "pool", name: pool };
+    showReport();
+  },
+  placed: () => replace(),
   remove(ids) {
     for (const id of ids) {
       const d = compose.draftList.find((_, i) => draftId(i) === id);
@@ -483,16 +439,43 @@ function codeOf(ol: Outline, id: string): [number, number] | null {
   return ol.decls.find((d) => d.name === id)?.range ?? null;
 }
 
-/** The Edit view, loaded the first time it is asked for: React and React Flow are its alone. */
-let editView: Promise<{ show(g: ReturnType<typeof graphOf>): void }> | null = null;
+/** The Flow view, loaded the first time it is shown: React and React Flow are its alone. */
+let editView: Promise<{ show(g: Graph): void; surface: Promise<ReplaySurface> }> | null = null;
+/** serQ's figure as laid out off the page, for what the Flow view does not
+ * draw; the graph the Flow view shows; and what the replay draws over it with. */
+let figureAt: Anchors | null = null;
+let shownGraph: Graph | null = null;
+let flowSurface: ReplaySurface | null = null;
 
-/** Give the Edit view serQ's graph of the figure as drawn now. */
+/** The replay's places: the Flow view's nodes and arrows as they stand. */
+function places(): Anchors | null {
+  if (!flowSurface || !shownGraph || !figureAt) return null;
+  return flowAnchors(flowEl, shownGraph, flowSurface.placed(), figureAt);
+}
+
+/** The Flow view moved, measured or routed something: the replay follows; a run waiting starts. */
+function replace() {
+  if (pending) return startReplay();
+  const on = player && places();
+  if (on) player!.place(on);
+  countStations();
+}
+
+/** Give the Flow view serQ's graph of the figure as drawn now. */
 function showGraph() {
   if (tab !== "flow" || !drawnFrom) return;
   const svg = view.querySelector("svg");
   if (!svg) return;
   const g = graphOf(svg, JSON.parse(drawnFrom.ir), [...compose.draftList]);
-  editView ??= import("./flow/EditView").then((m) => m.mountEditView(flowEl, editHost));
+  shownGraph = g;
+  editView ??= import("./flow/EditView").then((m) => {
+    const v = m.mountEditView(flowEl, editHost);
+    v.surface.then((s) => {
+      flowSurface = s;
+      replace();
+    });
+    return v;
+  });
   editView.then((v) => v.show(g));
 }
 compose.onDrafts = showGraph;
@@ -510,16 +493,16 @@ function setTab(t: Tab) {
   root.dataset.tab = t;
   for (const b of tabButtons) b.setAttribute("aria-selected", String(b.dataset.tab === t));
   inkTab();
-  // the figure stays laid out (the graph is read off it), out of sight, as wide as the stage
-  replayPane.classList.toggle("offstage", t !== "replay");
-  replayPane.style.width = t === "replay" ? "" : `${mainEl.clientWidth}px`;
+  // serQ's figure stays laid out (the graph is read off it), out of sight, as wide as the stage
+  replayPane.style.width = `${mainEl.clientWidth}px`;
   if (t === "code") editor.view.focus();
   if (location.hash !== `#${t}`) history.replaceState(null, "", `#${t}`);
   showGraph();
 }
 for (const b of tabButtons) b.onclick = () => setTab(b.dataset.tab as Tab);
 new ResizeObserver(inkTab).observe(tabButtons[0].parentElement!);
-setTab(TABS.find((t) => `#${t}` === location.hash) ?? "replay");
+// a link to the Replay tab, which was, is the Flow view now
+setTab(TABS.find((t) => `#${t}` === location.hash) ?? "flow");
 window.addEventListener("hashchange", () => {
   const t = TABS.find((x) => `#${x}` === location.hash);
   if (t && t !== tab) setTab(t);
@@ -546,9 +529,7 @@ window.addEventListener("keydown", (e) => {
   else editor.undo();
 });
 // the stage changes width with the window: the off-stage figure follows it
-new ResizeObserver(() => {
-  if (tab !== "replay") replayPane.style.width = `${mainEl.clientWidth}px`;
-}).observe(mainEl);
+new ResizeObserver(() => (replayPane.style.width = `${mainEl.clientWidth}px`)).observe(mainEl);
 
 // ------------------------------------------------------------ the theme ----
 
@@ -566,7 +547,6 @@ new ResizeObserver(() => {
     else root.dataset.theme = next;
     remember("theme", next);
     show();
-    themeFigure();
     // the canvases read the colours when they draw: the replay's every frame, the panels now
     dashboard.cursor(player?.t ?? 0);
   };
@@ -583,7 +563,6 @@ const load = () => {
   metricsSelected = null;
   report.innerHTML = "";
   reportAll.innerHTML = "";
-  camera.fitted = true;
   redraw(true);
 };
 select.onchange = load;
@@ -639,8 +618,10 @@ load();
 
 // for the page checks (scripts/check-page.mjs): what is on the page, without reading the canvas
 (window as unknown as { serqLar: unknown }).serqLar = {
-  camera,
   editor,
+  get player() {
+    return player;
+  },
   compose,
   outline: () => currentOutline,
   get generation() {

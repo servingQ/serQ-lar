@@ -1,7 +1,7 @@
 # Editing the deployment
 
-The page draws serQ's deployment view of the program and replays a run
-over it (the Replay tab, which edits nothing). The deployment is editable
+The page draws serQ's deployment of the program in the Flow tab and
+replays a run over it there. The deployment is editable
 twice over: edit the text (the Code tab) and the figure follows at once;
 or, in the Flow tab, drop engines onto serQ's graph and join stations with
 arrows, change a family's size, add a NIC or a pool, see a NIXL copy as
@@ -44,8 +44,9 @@ See [upstream.md](upstream.md), U10.
    typing pauses, in a worker of its own that a newer edit stops. Text
    serQ refuses keeps the last figure, dimmed, under the diagnostic
    (in the Flow tab, over the canvas); a click on it opens the text there.
-2. **Zoom and pan.** Wheel or pinch about the pointer, drag to pan,
-   double-click or Fit to fit. The replay's canvas follows (`camera.ts`).
+2. **Zoom and pan.** React Flow's: wheel or pinch, a drag on the canvas,
+   the fit button. The replay's canvas follows its viewport
+   (`flow/replay.ts`).
 3. **Parts** (the Flow tab's sidebar), each dragged and dropped; a
    click does nothing.
    - *Engines*: Prefill, Decode, Delay: a draft, dropped on the canvas,
@@ -84,7 +85,14 @@ See [upstream.md](upstream.md), U10.
    delay chosen has Code alone). A
    connection between two handles is an arrow below; a node dragged keeps
    its place in this browser (a layout, not the program); Delete removes a
-   station; "serQ's layout" puts every node back.
+   station; "serQ's layout" puts every node back. serQ's words are on it
+   as its figure writes them (`wordsOf` in `flow/graph.ts`; a stopgap by
+   place, upstream.md U19): a node's name over it and note under it, a
+   pool's capacity and policy, a branch's condition, an exit's, a copy's
+   way and latency, the arrival's process. The run replays over it
+   (`flow/replay.ts`): a station's sessions sit in its card's lane and
+   wait in a line left of it, its card counts them, an engine's bar shows
+   its forward pass, and a session follows a card as it is dragged.
 5. **Arrows** (a connection in the Edit view, or a Call part). From the arrival or a
    station to a station or a draft: the target's call after the source's,
    in the gateway's route or the server; a family's call chooses its
