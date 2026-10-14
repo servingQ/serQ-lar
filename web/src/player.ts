@@ -409,14 +409,28 @@ export class Player {
     return e && e.pts.length ? e.pts : null;
   }
 
-  /** The arrows from node `from` to node `to`, the fewest hops, through decisions. */
+  /** The arrows from node `from` to node `to`, the fewest hops, through
+   * decisions and across brackets (two stations one job holds at once: a
+   * hop between their centres, with no arrow). */
   private route(from: string, to: string): { pts: Point[] }[] | null {
     const prev = new Map<string, { from: string; pts: Point[] }>();
     const queue = [from];
     const seen = new Set([from]);
+    const hops = (n: string): { to: string; pts: Point[] }[] => {
+      const out = [...(this.at.flows.get(n) ?? [])];
+      for (const b of this.at.brackets) {
+        if (!b.includes(n)) continue;
+        const a = this.at.nodes.get(n);
+        for (const other of b) {
+          const c = this.at.nodes.get(other);
+          if (other !== n && a && c) out.push({ to: other, pts: [centre(a), centre(c)] });
+        }
+      }
+      return out;
+    };
     while (queue.length) {
       const n = queue.shift()!;
-      for (const f of this.at.flows.get(n) ?? []) {
+      for (const f of hops(n)) {
         if (seen.has(f.to)) continue;
         seen.add(f.to);
         prev.set(f.to, { from: n, pts: f.pts });
@@ -741,6 +755,10 @@ export class Player {
     }
     ctx.globalAlpha = 1;
   }
+}
+
+function centre(b: Box): Point {
+  return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
 }
 
 /** The point `d` along a path. */

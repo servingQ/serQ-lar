@@ -35,6 +35,11 @@ export interface Anchors {
    * loop's return, a transfer between two NICs. A decision or a tick is a
    * node without a stage, named `#k` by serQ. */
   flows: Map<string, { to: string; pts: Point[] }[]>;
+  /** Every node's box, by the name the arrows use (stations and decisions alike). */
+  nodes: Map<string, Box>;
+  /** The stations one job holds at once (a transfer's two NICs): bracketed,
+   * with no arrow between them, so a walk treats them as one place. */
+  brackets: string[][];
   /** The used part of each engine's budget bar, and its full width. */
   budgets: Map<string, { rect: SVGRectElement; full: number }>;
 }
@@ -55,7 +60,9 @@ function points(path: SVGPathElement): Point[] {
 export function anchors(svg: SVGSVGElement): Anchors {
   const vb = svg.viewBox.baseVal;
   const stations = new Map<string, Box>();
+  const nodes = new Map<string, Box>();
   const budgets = new Map<string, { rect: SVGRectElement; full: number }>();
+  for (const g of svg.querySelectorAll<SVGGElement>("g[data-node]")) nodes.set(g.dataset.node!, box(g));
   for (const g of svg.querySelectorAll<SVGGElement>("g[data-stage]")) {
     const stage = g.dataset.stage!;
     stations.set(stage, box(g));
@@ -88,5 +95,6 @@ export function anchors(svg: SVGSVGElement): Anchors {
     list.push({ to: p.dataset.to!, pts: points(p) });
     flows.set(from, list);
   }
-  return { width: vb.width, height: vb.height, stations, pools, arrival, exits, flows, budgets };
+  const brackets = [...svg.querySelectorAll<SVGRectElement>('rect[data-role="bracket"]')].map((r) => (r.dataset.nodes ?? "").split(" ").filter(Boolean));
+  return { width: vb.width, height: vb.height, stations, pools, arrival, exits, flows, nodes, brackets, budgets };
 }
