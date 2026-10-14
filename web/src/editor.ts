@@ -5,11 +5,11 @@
 // of its own: the colours are what serQ's lexer cut, and the words it
 // completes are serQ's vocabulary and the names serQ's lexer cut.
 
-import { autocompletion, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import { acceptCompletion, autocompletion, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
 import { lintGutter, setDiagnostics } from "@codemirror/lint";
-import { EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
+import { EditorState, Prec, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, drawSelection, highlightActiveLine, keymap, lineNumbers } from "@codemirror/view";
 import type { Edit } from "./edit";
 
@@ -82,6 +82,9 @@ export class Editor {
             optionClass: (c) => (c.type ? `tok-${c.type}` : ""),
             icons: false,
           }),
+          // Tab takes the completion, as Enter does; with no list open it
+          // indents (`indentWithTab` below).
+          Prec.high(keymap.of([{ key: "Tab", run: acceptCompletion }])),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           EditorState.tabSize.of(2),
           theme,
