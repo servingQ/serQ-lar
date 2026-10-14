@@ -174,14 +174,13 @@ kbd { display: inline-block; padding: 0 4px; font-size: 10px; line-height: 15px;
 .code-pane { display: none; }
 html[data-tab="code"] .code-pane { display: flex; flex: 1; min-width: 0; border-right: none; }
 html[data-tab="code"] #main { display: none; }
-/* the program's choices in one row: over the Code view's text, or in the run bar */
-.prog-head.as-row { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 10px 16px; border-bottom: none; }
-html[data-tab="code"] .prog-head.as-row { border-bottom: 1px solid var(--line); }
-.prog-head.as-row .prog-pick { flex: 0 1 440px; min-width: 0; }
-.prog-head.as-row .prog-opts { display: flex; gap: 12px; }
-.prog-head.as-row .prog-opts .field { flex-direction: row; align-items: center; gap: 6px; }
-.prog-head.as-row .prog-opts input { width: 72px; }
-@media (max-width: 640px) { .prog-head.as-row { padding: 8px 12px; gap: 8px; } .prog-head.as-row .prog-pick { flex-basis: 100%; } }
+/* the program's choices in one row, in the run bar */
+.prog-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 10px 16px; }
+.prog-head .prog-pick { flex: 0 1 440px; min-width: 0; }
+.prog-head .prog-opts { display: flex; gap: 12px; }
+.prog-head .prog-opts .field { flex-direction: row; align-items: center; gap: 6px; }
+.prog-head .prog-opts input { width: 72px; }
+@media (max-width: 640px) { .prog-head { padding: 8px 12px; gap: 8px; } .prog-head .prog-pick { flex-basis: 100%; } }
 
 /* ---- which view shows what ---- */
 html[data-tab="replay"] [data-show]:not([data-show~="replay"]),

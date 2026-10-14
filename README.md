@@ -62,9 +62,10 @@ the program, one step to undo (Ctrl+Z, in Flow as in the text), and serQ
 says whether it is a program ([docs/editor.md](docs/editor.md)).
 
 The bar at the top switches the stage between Replay (which edits
-nothing), Flow, Code (the program the width of the page) and Metrics,
-with the example, horizon and seed in a bar above each. The theme follows
-the system, or the button beside it.
+nothing), Flow, Code (the program alone, the width of the page) and
+Metrics; the example, Run again, horizon and seed sit in a bar above
+Replay, Flow and Metrics. The theme follows the system, or the button
+beside it.
 
 The figure, the IR, the report and the log are serQ's; the page adds only the
 replay and the editing. It deploys to GitHub Pages.

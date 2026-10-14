@@ -430,10 +430,6 @@ const replayPane = $<HTMLDivElement>("replay-pane");
 const mainEl = $<HTMLElement>("main");
 const tabButtons = [...document.querySelectorAll<HTMLButtonElement>(".tabbar button[data-tab]")];
 const tabInk = document.querySelector<HTMLSpanElement>(".tab-ink")!;
-/** The program's choices (example, Run again, horizon, seed): over the text in Code, in the run bar elsewhere. */
-const progHead = $<HTMLDivElement>("prog-head");
-const runBar = $<HTMLDivElement>("run-bar");
-const codePane = $<HTMLElement>("code-pane");
 
 /** A node of the Edit view as an end of an arrow: the arrival (or the router's decision, the start of the way), a station, or a draft. */
 function endOf(id: string): { from?: From; to?: To; nic?: Draft } {
@@ -499,9 +495,6 @@ function setTab(t: Tab) {
   root.dataset.tab = t;
   for (const b of tabButtons) b.setAttribute("aria-selected", String(b.dataset.tab === t));
   inkTab();
-  const bar = t !== "code";
-  if (bar && progHead.parentElement !== runBar) runBar.append(progHead);
-  if (!bar && progHead.parentElement !== codePane) codePane.prepend(progHead);
   // the figure stays laid out (the graph is read off it), out of sight, as wide as the stage
   replayPane.classList.toggle("offstage", t !== "replay");
   replayPane.style.width = t === "replay" ? "" : `${mainEl.clientWidth}px`;

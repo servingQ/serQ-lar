@@ -59,33 +59,8 @@
       </header>
 
       <div class="body relative flex min-h-0">
-        <!-- the program: serQ's text, and what it runs for; the Code view -->
+        <!-- the program: serQ's text, the Code view -->
         <aside id="code-pane" class="code-pane editor flex min-h-0 flex-col border-r border-line bg-panel" aria-label="Program">
-          <div id="prog-head" class="prog-head as-row flex flex-col gap-2.5 border-b border-line p-3">
-            <div class="prog-pick flex items-center gap-2">
-              <select id="program" class="min-w-0 flex-1 font-mono text-[13px]" aria-label="Example program"></select>
-              <button id="draw" class="btn-primary" title="The figure follows the text as you type; this runs it again">
-                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4.5h-4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Run again
-              </button>
-            </div>
-            <div class="prog-opts grid grid-cols-2 gap-2">
-              <label class="field">
-                <span>horizon</span>
-                <select id="horizon" aria-label="Horizon, simulated seconds">
-                  <option value="10">10 s</option>
-                  <option value="30" selected>30 s</option>
-                  <option value="60">60 s</option>
-                  <option value="120">120 s</option>
-                  <option value="300">300 s</option>
-                </select>
-              </label>
-              <label class="field">
-                <span>seed</span>
-                <input id="seed" type="number" min="1" value="1" aria-label="Seed" />
-              </label>
-            </div>
-          </div>
           <div id="source" class="source min-h-0 flex-1"></div>
           <div class="code-foot flex items-center gap-2 border-t border-line px-3 py-1.5 text-[11px] text-dim">
             <kbd>Ctrl</kbd><kbd>Space</kbd><span>completes</span>
@@ -96,8 +71,34 @@
 
         <!-- the views -->
         <main id="main" class="stage relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
-          <!-- outside Code the program's choices sit here (main.ts moves them) -->
-          <div id="run-bar" class="run-bar border-b border-line bg-panel" data-show="replay flow metrics"></div>
+          <!-- the program's choices; Code is the text alone -->
+          <div id="run-bar" class="run-bar border-b border-line bg-panel" data-show="replay flow metrics">
+            <div id="prog-head" class="prog-head">
+              <div class="prog-pick flex items-center gap-2">
+                <select id="program" class="min-w-0 flex-1 font-mono text-[13px]" aria-label="Example program"></select>
+                <button id="draw" class="btn-primary" title="The figure follows the text as you type; this runs it again">
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4.5h-4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  Run again
+                </button>
+              </div>
+              <div class="prog-opts grid grid-cols-2 gap-2">
+                <label class="field">
+                  <span>horizon</span>
+                  <select id="horizon" aria-label="Horizon, simulated seconds">
+                    <option value="10">10 s</option>
+                    <option value="30" selected>30 s</option>
+                    <option value="60">60 s</option>
+                    <option value="120">120 s</option>
+                    <option value="300">300 s</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>seed</span>
+                  <input id="seed" type="number" min="1" value="1" aria-label="Seed" />
+                </label>
+              </div>
+            </div>
+          </div>
           <div class="flex flex-col gap-3 p-3 sm:p-4" data-show="replay flow">
             <!-- Flow: the station chosen, its edits; and what the last edit did, or why it did not -->
             <div id="inspector" class="inspector" data-show="flow" hidden></div>
