@@ -10,10 +10,13 @@ waits in a pool's queue, filled once admitted; **orange** in a prefill,
 **blue** in a decode, **grey** on any other stage (a NIC transfer, a tool); a
 green ring while the forward pass an engine is running covers it, and the
 engine's budget bar fills with that pass's tokens. A red ring flashes at a
-preemption; a small square moving along the link is a hold's work (the KV
-pulled over the NICs) while its session waits. Between stations a session
-follows the figure's arrows, at a pace of its own: a hop takes half a
-second whatever the playback speed, since in the simulation it takes none.
+preemption. A session is where its latest run put it, a transfer over two
+NICs staging at the first; a wait moves it to a queue only when its next
+run is there (a reservation elsewhere, the decoder's KV before the pull,
+leaves it standing, hollow). Between stations a session follows the
+figure's arrows, through the router's decision and down the `else` lane
+when that is its path, at a pace of its own: a hop takes half a second
+whatever the playback speed, since in the simulation it takes none.
 When no session is in any station or queue the clock skips to the next
 event ("skip idle time"), so a tool call of seconds passes in a blink and an
 iteration of milliseconds plays at the chosen speed; "Next event" steps.

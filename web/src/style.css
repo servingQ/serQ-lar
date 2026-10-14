@@ -117,5 +117,4 @@ textarea { width: 100%; height: 64vh; margin-top: 8px; padding: 8px; font-size: 
 .report pre.err { color: var(--alert); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 .view svg g[data-stage], .view svg g[data-pool] { cursor: pointer; }
 .view svg g.selected { filter: drop-shadow(0 0 1.5px var(--decode)) drop-shadow(0 0 4px var(--decode)); }
-.packet { display: inline-block; width: 7px; height: 7px; background: var(--plain); border: 0.5px solid var(--ink); }
 .legend .hint { flex-basis: 100%; }

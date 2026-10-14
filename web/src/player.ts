@@ -1,14 +1,18 @@
 // Replays serQ's run log over the deployment view. Each session is a
 // circle: hollow while it waits in a pool's queue, filled once admitted
 // and while it runs; orange in a prefill, blue in a decode, grey on any
-// other stage (a NIC transfer, a tool). A ring marks the requests in the
-// forward pass an engine is running, and the engine's budget bar fills
-// with that pass's tokens. A session on a stage the figure does not draw
-// (the workload's tool) parks, dimmed, past the exit.
+// other stage (a NIC, a tool). A ring marks the requests in the forward
+// pass an engine is running, and the engine's budget bar fills with that
+// pass's tokens. A session on a stage the figure does not draw (the
+// workload's tool) parks, dimmed, past the exit.
 //
-// Between stations a session travels along the figure's arrows (serQ names
-// each arrow's ends), at a pace of its own: a hop takes a fraction of a
-// wall-clock second whatever the playback speed, since in the simulation
+// A session is where its latest run put it: in that run's first drawn
+// station (a transfer over two NICs stages at the first). A wait moves it
+// to the pool's queue only when that is where its next run is (the log
+// says): a reservation elsewhere, such as the decoder's KV before the
+// transfer, leaves it where it stands, hollow. Between stations it travels
+// along the figure's arrows at a pace of its own: a hop takes a fraction of
+// a wall-clock second whatever the playback speed, since in the simulation
 // it takes no time. When nothing is in any station, time can skip to the
 // next event (`skipIdle`): a tool call of seconds passes in a blink, an
 // iteration of milliseconds plays at the chosen speed.
@@ -21,16 +25,17 @@ type Mode = "prefill" | "decode" | "plain";
 /** Where a session is, as the log last put it. */
 type Where =
   | { kind: "source" }
-  | { kind: "queue"; pool: number; seq: number }
-  | { kind: "held"; pool: number; seq: number }
+  /** In a pool's queue; `moved` there (its next run is at that pool's stage), or waiting where it stands. */
+  | { kind: "queue"; pool: number; seq: number; moved: boolean }
+  | { kind: "held"; pool: number; seq: number; moved: boolean }
   | { kind: "run"; stages: number[]; mode: Mode; since: number; until: number }
   | { kind: "ready"; stage: number }
   /** Ended, leaving by the exit from `from` (the node it was last at). */
   | { kind: "gone"; from?: string };
 
 /** A way along the figure's arrows: points, and the indices after which the
- * session is carried rather than drawn moving (out by an exit, in again by
- * the arrival: a new turn). */
+ * session is carried rather than drawn moving (from where it parked to the
+ * arrival, out by an exit and in again: a new turn). */
 interface Path {
   pts: Point[];
   jumps: Set<number>;
@@ -49,9 +54,6 @@ export interface Mover {
   where: Where;
   /** The figure node (a station, or a decision `#k`) it was last placed at. */
   node?: string;
-  /** The pool it waits at or was admitted at, while its hold's work (a KV
-   * transfer over the NICs) runs elsewhere: it stays, the work moves. */
-  heldAt?: number;
   /** At the workload (a tool), not in the deployment: parked past the exit. */
   away: boolean;
   path: Path | null;
@@ -112,6 +114,9 @@ export class Player {
   private alive = true;
   /** Per run event (by index): when the run ends, the session's next `done`. */
   private until: Map<number, number>;
+  /** The wait events (by index) that move the session to the pool's queue:
+   * its next run is at that pool's stage. */
+  private moves: Set<number>;
   /** Per stage name: the most tokens one of its iterations scheduled, the budget bar's scale. */
   private peak = new Map<string, number>();
   private stageName: string[];
@@ -129,6 +134,7 @@ export class Player {
     this.stageName = log.stages.map((s) => s.name);
     this.poolName = log.pools.map((p) => p.name);
     this.until = runEnds(log.events, horizon);
+    this.moves = this.waitMoves();
     for (const e of log.events) {
       if (e.ev !== "iter") continue;
       const n = this.stageName[e.stage];
@@ -186,7 +192,6 @@ export class Player {
           break;
         case "run":
           if (m.away) away++;
-          else if (m.heldAt !== undefined) queue++;
           else resident++;
           break;
         case "ready":
@@ -256,6 +261,32 @@ export class Player {
     return `${name}${turn}\n${at}${pre}`;
   }
 
+  /** The wait events whose pool's stage is where the session runs next: the
+   * ones that move it there. A wait for a pool elsewhere (the decoder's KV,
+   * reserved before the transfer) is not a move. */
+  private waitMoves(): Set<number> {
+    const out = new Set<number>();
+    const pending = new Map<string, number[]>();
+    this.log.events.forEach((e, i) => {
+      if (e.ev === "iter") return;
+      const k = who(e);
+      if (e.ev === "wait") {
+        const list = pending.get(k) ?? [];
+        list.push(i);
+        pending.set(k, list);
+      } else if (e.ev === "run") {
+        const drawn = e.stages.find((s) => this.stationOf(s));
+        const there = drawn === undefined ? undefined : this.stageName[drawn];
+        for (const j of pending.get(k) ?? []) {
+          const w = this.log.events[j];
+          if (w.ev === "wait" && there !== undefined && this.poolStage.get(w.pool) === there) out.add(j);
+        }
+        pending.delete(k);
+      }
+    });
+    return out;
+  }
+
   private apply(snap: boolean) {
     const ev = this.log.events;
     while (this.next < ev.length && ev[this.next].t <= this.t) {
@@ -279,33 +310,36 @@ export class Player {
         case "turn":
           m.turn = e.turn;
           break;
-        case "wait":
-          m.where = { kind: "queue", pool: e.pool, seq: this.seq++ };
-          m.heldAt = e.pool;
-          m.away = false;
-          if (!snap) this.travel(m, this.poolStage.get(e.pool));
+        case "wait": {
+          const moved = this.moves.has(i);
+          m.where = { kind: "queue", pool: e.pool, seq: this.seq++, moved };
+          if (moved) {
+            m.away = false;
+            if (!snap) this.travel(m, this.poolStage.get(e.pool));
+          }
           break;
-        case "admit":
-          m.where = { kind: "held", pool: e.pool, seq: m.where.kind === "queue" ? m.where.seq : this.seq++ };
-          m.heldAt = e.pool;
+        }
+        case "admit": {
+          const w = m.where;
+          const prior = w.kind === "queue" ? w : null;
+          m.where = { kind: "held", pool: e.pool, seq: prior ? prior.seq : this.seq++, moved: prior ? prior.moved : false };
           break;
+        }
         case "run": {
           const held = m.where.kind === "queue" || m.where.kind === "held";
           m.where = { kind: "run", stages: e.stages, mode: e.mode ?? "plain", since: e.t, until: this.until.get(i) ?? this.horizon };
-          const drawn = e.stages.filter((k) => this.stationOf(k));
-          if (drawn.length === 1) {
-            // into a station
-            m.heldAt = undefined;
+          const drawn = e.stages.find((k) => this.stationOf(k));
+          if (drawn !== undefined) {
+            // into a station: a transfer over two NICs stages at the first
             m.away = false;
-            if (!snap) this.travel(m, this.stageName[drawn[0]]);
-          } else if (drawn.length === 0 && !held) {
+            if (!snap) this.travel(m, this.stageName[drawn]);
+          } else if (!held) {
             // at the workload: out of the deployment until something takes it in
             m.away = true;
-            m.heldAt = undefined;
             if (!snap) this.travel(m, undefined, true);
           }
-          // else: its hold's work runs elsewhere (a transfer, a link's
-          // latency) while it stays where it was admitted
+          // else: its hold's work (a link's latency) runs off the figure
+          // while it stays where it was admitted
           break;
         }
         case "done":
@@ -318,8 +352,7 @@ export class Player {
           break;
         case "refuse":
         case "end": {
-          const from = m.node;
-          m.where = { kind: "gone", from };
+          m.where = { kind: "gone", from: m.node };
           if (!snap) this.travel(m, undefined, true);
           break;
         }
@@ -327,32 +360,34 @@ export class Player {
     }
     for (const [k, m] of this.movers) if (m.where.kind === "gone" && (snap || m.alpha <= 0)) this.movers.delete(k);
     if (snap) {
+      for (const m of this.movers.values()) m.node = this.nodeOf(m);
       const targets = this.targets();
       for (const [k, m] of this.movers) {
         const p = targets.get(k);
         if (p) Object.assign(m, p);
         m.path = null;
-        m.node = this.nodeOf(m);
         m.alpha = m.where.kind === "gone" ? 0 : 1;
       }
     }
   }
 
-  /** The figure node a session's state puts it at, if drawn. */
+  /** The figure node a session's state puts it at: the stage of a queue it
+   * moved to, the station of its run, else where it already stands. */
   private nodeOf(m: Mover): string | undefined {
     const w = m.where;
-    if (w.kind === "queue" || w.kind === "held") return this.poolStage.get(w.pool);
+    if (w.kind === "queue" || w.kind === "held") return w.moved ? this.poolStage.get(w.pool) : m.node;
     if (w.kind === "run") {
       const k = w.stages.find((k) => this.stationOf(k));
-      return k === undefined ? undefined : this.stageName[k];
+      return k === undefined ? (m.away ? undefined : m.node) : this.stageName[k];
     }
-    if (w.kind === "ready") return this.at.stations.has(this.stageName[w.stage]) ? this.stageName[w.stage] : undefined;
+    if (w.kind === "ready") return this.at.stations.has(this.stageName[w.stage]) ? this.stageName[w.stage] : m.node;
     return undefined;
   }
 
   /** Send `m` along the arrows to node `to` (a station), or out (`leaving`:
-   * by the exit from where it is). Where no arrows join the two, out by the
-   * exit and in again by the arrival, as a new turn comes. */
+   * by the exit from where it is). From nowhere (an arrival, a return from
+   * the workload) it comes in by the arrival arrow; where no arrows join
+   * two stations, out by the exit and in again, as a new turn comes. */
   private travel(m: Mover, to: string | undefined, leaving = false) {
     const from = m.node;
     if (to !== undefined && !this.at.stations.has(to)) to = undefined;
@@ -374,6 +409,8 @@ export class Player {
           segs.push(...inAgain);
         }
       }
+      // from nowhere, it is carried to the arrival's start, not drawn flying there
+      if (from === undefined && segs.length) segs[0].jump = true;
     }
     if (to !== undefined) m.node = to;
     else if (leaving) m.node = undefined;
@@ -453,25 +490,6 @@ export class Player {
     return this.at.stations.get(this.stageName[stage]);
   }
 
-  /** The point a run over `drawn` stages (two or more) has reached between
-   * the first's and the last's centres, by its progress in time. */
-  private along(drawn: number[], since: number, until: number): Point {
-    const a = this.stationOf(drawn[0])!;
-    const b = this.stationOf(drawn[drawn.length - 1])!;
-    const p = Math.min(1, Math.max(0, (this.t - since) / Math.max(1e-9, until - since)));
-    return { x: a.x + a.w / 2 + (b.x + b.w / 2 - a.x - a.w / 2) * p, y: a.y + a.h / 2 + (b.y + b.h / 2 - a.y - a.h / 2) * p };
-  }
-
-  /** The work of a session's hold moving elsewhere (its KV over the NICs):
-   * where it is now, if drawn. */
-  private packet(m: Mover): Point | null {
-    const w = m.where;
-    if (w.kind !== "run" || m.heldAt === undefined) return null;
-    const drawn = w.stages.filter((k) => this.stationOf(k));
-    if (drawn.length < 2) return null;
-    return this.along(drawn, w.since, w.until);
-  }
-
   /** Where new sessions come from: the start of the arrival arrow. */
   private source(): Point {
     const a = this.at.arrival.pts[0];
@@ -500,47 +518,37 @@ export class Player {
     return { x: s.x + 20, y: s.y };
   }
 
-  /** Each live session's target position. */
+  /** Each live session's target position: a place in a queue, a slot in a
+   * station, the parking past the exit, or the sink. */
   private targets(): Map<string, Point> {
     const out = new Map<string, Point>();
     const queued = new Map<number, Mover[]>();
     const resident = new Map<string, Mover[]>();
     const away: Mover[] = [];
+    const at = (name: string, m: Mover) => {
+      const r = resident.get(name) ?? [];
+      r.push(m);
+      resident.set(name, r);
+    };
+    // where it stands, if that is a station; else parked
+    const stay = (m: Mover) => (m.node !== undefined && this.at.stations.has(m.node) ? at(m.node, m) : away.push(m));
     for (const m of this.movers.values()) {
       const w = m.where;
       if (w.kind === "queue" || w.kind === "held") {
-        const q = queued.get(w.pool) ?? [];
-        q.push(m);
-        queued.set(w.pool, q);
-      } else if (w.kind === "run") {
-        const drawn = w.stages.filter((k) => this.stationOf(k));
-        if (m.heldAt !== undefined) {
-          // its hold's work runs elsewhere: it stays at the pool (the work is
-          // drawn moving, `packet`)
-          const q = queued.get(m.heldAt) ?? [];
+        if (w.moved) {
+          const q = queued.get(w.pool) ?? [];
           q.push(m);
-          queued.set(m.heldAt, q);
-        } else if (drawn.length >= 2) {
-          // a flow over two stations: along the line between them, by progress
-          out.set(m.key, this.along(drawn, w.since, w.until));
-        } else if (drawn.length === 1) {
-          const name = this.stageName[drawn[0]];
-          const r = resident.get(name) ?? [];
-          r.push(m);
-          resident.set(name, r);
-        } else if (m.away) away.push(m);
-        else if (m.node && this.at.stations.has(m.node)) {
-          const r = resident.get(m.node) ?? [];
-          r.push(m);
-          resident.set(m.node, r);
-        } else away.push(m);
+          queued.set(w.pool, q);
+        } else stay(m);
+      } else if (w.kind === "run") {
+        const k = w.stages.find((k) => this.stationOf(k));
+        if (k !== undefined) at(this.stageName[k], m);
+        else if (m.away) away.push(m);
+        else stay(m);
       } else if (w.kind === "ready") {
         const name = this.stageName[w.stage];
-        if (this.at.stations.has(name)) {
-          const r = resident.get(name) ?? [];
-          r.push(m);
-          resident.set(name, r);
-        } else away.push(m);
+        if (this.at.stations.has(name)) at(name, m);
+        else stay(m);
       } else if (w.kind === "gone") {
         out.set(m.key, this.sink(w.from));
       }
@@ -648,16 +656,11 @@ export class Player {
     const occupied = new Map<string, { waiting: number; running: number }>();
     for (const m of this.movers.values()) {
       const w = m.where;
-      let name: string | undefined;
-      let waiting = false;
-      if (m.heldAt !== undefined && w.kind !== "gone") {
-        name = this.poolStage.get(m.heldAt);
-        waiting = true;
-      } else if (w.kind === "run" && !m.away) name = this.nodeOf(m) ?? m.node;
-      else if (w.kind === "ready") name = this.nodeOf(m);
+      if (w.kind === "gone" || w.kind === "source" || m.away) continue;
+      const name = this.nodeOf(m);
       if (!name || !at.stations.has(name)) continue;
       const c = occupied.get(name) ?? { waiting: 0, running: 0 };
-      if (waiting) c.waiting++;
+      if (w.kind === "queue" || w.kind === "held") c.waiting++;
       else c.running++;
       occupied.set(name, c);
     }
@@ -685,19 +688,6 @@ export class Player {
       ctx.fillText(`${away} at a tool`, s.x + 12, s.y + 8);
     }
 
-    // a hold's work on the move: a small square along the arrow, its session's colour
-    for (const m of this.movers.values()) {
-      const p = this.packet(m);
-      if (!p) continue;
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = colours.plain;
-      ctx.fillRect(p.x - 2.2, p.y - 2.2, 4.4, 4.4);
-      ctx.strokeStyle = ink;
-      ctx.lineWidth = 0.5;
-      ctx.strokeRect(p.x - 2.2, p.y - 2.2, 4.4, 4.4);
-    }
-    ctx.globalAlpha = 1;
-
     for (const m of this.movers.values()) {
       const w = m.where;
       const mode: Mode = w.kind === "run" ? w.mode : "plain";
@@ -705,7 +695,7 @@ export class Player {
       const pinned = m.key === this.pinned;
       const r = pinned ? R + 1.5 : R;
       const awayNow = !m.path && m.away;
-      // out by an exit and in again: faint around the jump
+      // carried, not drawn moving: faint around a jump
       let carried = 1;
       if (m.path) {
         for (const j of m.path.jumps) {
