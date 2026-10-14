@@ -60,10 +60,12 @@ which on the copy), a duplicate, or its removal. Every edit is text in
 the program, one step to undo, and serQ says whether it is a program
 ([docs/editor.md](docs/editor.md)).
 
-The program sits in a sidebar on the left (Ctrl+B or the button at the
-top left folds it away, a drag on its edge widens it; on a phone it is a
-drawer), and the bar at the top switches the stage between Replay, Flow,
-Code (the program the width of the page) and Metrics. The theme follows
+The bar at the top switches the stage between Replay, Flow, Code (the
+program the width of the page) and Metrics. In Flow the program sits in
+a sidebar beside the graph, so an arrow drawn shows up in the text (Ctrl+B
+or the button at the top left folds it away, a drag on its edge widens it;
+on a phone it is a drawer); Replay and Metrics give the stage the page,
+with the example, horizon and seed in a bar above it. The theme follows
 the system, or the button beside it.
 
 The figure, the IR, the report and the log are serQ's; the page adds only the

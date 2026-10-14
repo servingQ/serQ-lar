@@ -425,6 +425,10 @@ const replayPane = $<HTMLDivElement>("replay-pane");
 const mainEl = $<HTMLElement>("main");
 const tabButtons = [...document.querySelectorAll<HTMLButtonElement>(".tabbar button[data-tab]")];
 const tabInk = document.querySelector<HTMLSpanElement>(".tab-ink")!;
+/** The program's choices (example, Run again, horizon, seed): atop the sidebar in Flow and Code, in the run bar in Replay and Metrics. */
+const progHead = $<HTMLDivElement>("prog-head");
+const runBar = $<HTMLDivElement>("run-bar");
+const sidebarEl = $<HTMLElement>("sidebar");
 
 /** A node of the Edit view as an end of an arrow: the arrival (or the router's decision, the start of the way), a station, or a draft. */
 function endOf(id: string): { from?: From; to?: To; nic?: Draft } {
@@ -486,6 +490,11 @@ function setTab(t: Tab) {
   root.dataset.tab = t;
   for (const b of tabButtons) b.setAttribute("aria-selected", String(b.dataset.tab === t));
   inkTab();
+  // the sidebar is Flow's (and Code's, the width of the page); elsewhere the stage has the page
+  const bar = t === "replay" || t === "metrics";
+  if (bar && progHead.parentElement !== runBar) runBar.append(progHead);
+  if (!bar && progHead.parentElement !== sidebarEl) sidebarEl.prepend(progHead);
+  progHead.classList.toggle("as-row", t !== "flow");
   // the figure stays laid out (the graph is read off it), out of sight, as wide as the stage
   replayPane.classList.toggle("offstage", t !== "replay");
   replayPane.style.width = t === "replay" ? "" : `${mainEl.clientWidth}px`;
@@ -533,7 +542,7 @@ sidebarToggle.onclick = () => setSidebar(!sidebarOpen());
 $<HTMLButtonElement>("sidebar-close").onclick = () => setSidebar(false);
 $<HTMLDivElement>("scrim").onclick = () => setSidebar(false);
 window.addEventListener("keydown", (e) => {
-  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b" && tab !== "code") {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b" && tab === "flow") {
     e.preventDefault();
     setSidebar(!sidebarOpen());
   }

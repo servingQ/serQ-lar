@@ -191,14 +191,19 @@ html[data-sidebar="closed"] #sidebar-toggle .rail-fill { opacity: 0; }
 }
 /* Code: the program is the page */
 html[data-tab="code"] .sidebar { position: relative; flex: 1; width: auto; max-width: none; margin-left: 0 !important; border-right: none; box-shadow: none; }
-html[data-tab="code"] #main, html[data-tab="code"] .grip, html[data-tab="code"] .scrim, html[data-tab="code"] #sidebar-close { display: none; }
-html[data-tab="code"] #sidebar-toggle { visibility: hidden; }
-html[data-tab="code"] .prog-head { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 10px 16px; }
-html[data-tab="code"] .prog-title { display: none; }
-html[data-tab="code"] .prog-pick { flex: 0 1 440px; min-width: 0; }
-html[data-tab="code"] .prog-opts { display: flex; gap: 12px; }
-html[data-tab="code"] .prog-opts .field { flex-direction: row; align-items: center; gap: 6px; }
-html[data-tab="code"] .prog-opts input { width: 72px; }
+html[data-tab="code"] #main, html[data-tab="code"] .grip, html[data-tab="code"] .scrim, html[data-tab="code"] #sidebar-close, html[data-tab="code"] #sidebar-toggle { display: none; }
+/* Replay and Metrics: the stage alone, the program's choices in a bar above it */
+html[data-tab="replay"] .sidebar, html[data-tab="replay"] .scrim,
+html[data-tab="metrics"] .sidebar, html[data-tab="metrics"] .scrim { display: none; }
+/* the program's choices in one row: over the Code tab's text, or in the run bar */
+.prog-head.as-row { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 10px 16px; border-bottom: none; }
+html[data-tab="code"] .prog-head.as-row { border-bottom: 1px solid var(--line); }
+.prog-head.as-row .prog-title { display: none; }
+.prog-head.as-row .prog-pick { flex: 0 1 440px; min-width: 0; }
+.prog-head.as-row .prog-opts { display: flex; gap: 12px; }
+.prog-head.as-row .prog-opts .field { flex-direction: row; align-items: center; gap: 6px; }
+.prog-head.as-row .prog-opts input { width: 72px; }
+@media (max-width: 640px) { .prog-head.as-row { padding: 8px 12px; gap: 8px; } .prog-head.as-row .prog-pick { flex-basis: 100%; } }
 
 /* ---- which view shows what ---- */
 html[data-tab="replay"] [data-show]:not([data-show~="replay"]),
