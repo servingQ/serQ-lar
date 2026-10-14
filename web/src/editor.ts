@@ -2,8 +2,10 @@
 // (`frontend::highlight`, the wasm's `tokens`), serQ's diagnostic
 // underlined where it points, and an edit made from the figure one
 // transaction, so that it undoes like typing. The editor reads no grammar
-// of its own: the colours are what serQ's lexer cut.
+// of its own: the colours are what serQ's lexer cut, and the words it
+// completes are serQ's vocabulary and the names serQ's lexer cut.
 
+import { autocompletion, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
 import { lintGutter, setDiagnostics } from "@codemirror/lint";
@@ -42,11 +44,25 @@ const theme = EditorView.theme({
   "&.cm-focused": { outline: "none" },
   ".cm-cursor": { borderLeftColor: "var(--ink)" },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": { background: "color-mix(in srgb, var(--decode) 25%, transparent)" },
+  ".cm-tooltip": { background: "var(--panel)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: "4px" },
+  ".cm-tooltip-autocomplete > ul": { fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace', maxHeight: "14em" },
+  ".cm-tooltip-autocomplete > ul > li[aria-selected]": { background: "color-mix(in srgb, var(--decode) 25%, transparent)", color: "inherit" },
+  ".cm-completionDetail": { color: "var(--dim)", fontStyle: "normal", fontWeight: "normal", marginLeft: "1.5em", float: "right" },
+  ".cm-completionMatchedText": { textDecoration: "none", fontWeight: "700" },
   ".cm-flash": { background: "color-mix(in srgb, var(--busy) 30%, transparent)", transition: "background 1s" },
 });
 
+/** Where completion stays quiet: what serQ cut as a comment or a string. */
+const QUIET = new Set(["tok-comment", "tok-string"]);
+
 export class Editor {
   readonly view: EditorView;
+  /** The words the language gives, from serQ (`vocabulary`). */
+  private words: Completion[] = [];
+  /** The program's own names, as serQ's latest cut found them. */
+  private names: string[] = [];
+  /** What a name is, where the outline says: `queue`, `pool`, … */
+  private kinds = new Map<string, string>();
 
   constructor(parent: HTMLElement, onChange: () => void) {
     this.view = new EditorView({
@@ -61,6 +77,11 @@ export class Editor {
           bracketMatching(),
           lintGutter(),
           colours,
+          autocompletion({
+            override: [(c) => this.complete(c)],
+            optionClass: (c) => (c.type ? `tok-${c.type}` : ""),
+            icons: false,
+          }),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
           EditorState.tabSize.of(2),
           theme,
@@ -85,6 +106,36 @@ export class Editor {
       at += text.length;
     }
     this.view.dispatch({ effects: recolour.of(b.finish()) });
+    this.names = [...new Set(pieces.filter(([role, t]) => role === "name" && /^[A-Za-z_]/.test(t)).map(([, t]) => t))];
+  }
+
+  /** serQ's vocabulary, `[role, word]`: the words completion offers besides the program's names. */
+  set vocabulary(words: [string, string][]) {
+    this.words = words.map(([role, word]) => ({ label: word, type: role, detail: role }));
+  }
+
+  /** What the outline says each name is, shown beside it when completing. */
+  set outlined(kinds: Map<string, string>) {
+    this.kinds = kinds;
+  }
+
+  /** serQ's words and the program's names that start like the word before the caret. */
+  private complete(c: CompletionContext): CompletionResult | null {
+    const word = c.matchBefore(/~?[A-Za-z_][\w.]*|~/);
+    if (!word && !c.explicit) return null;
+    const from = word?.from ?? c.pos;
+    let quiet = false;
+    c.state.field(colours).between(Math.max(0, from - 1), from, (_a, _b, d) => {
+      if (QUIET.has(d.spec.class)) quiet = true;
+    });
+    if (quiet) return null;
+    const typed = word?.text ?? "";
+    const words = new Set(this.words.map((w) => w.label));
+    const names: Completion[] = this.names
+      // the word being typed is in the cut too, unless it was typed since
+      .filter((n) => n !== typed && !words.has(n))
+      .map((n) => ({ label: n, detail: this.kinds.get(n) ?? "name", boost: 1 }));
+    return { from, options: [...names, ...this.words], validFor: /^~?[\w.]*$/ };
   }
 
   get text(): string {

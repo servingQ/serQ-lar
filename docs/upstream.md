@@ -225,3 +225,17 @@ and the header links to that tag on GitHub. Issue draft:
 > serq 0.1.6-alpha.3
 > ```
 > pre-release 태그를 찍는 커밋에서 `version = "0.1.6-alpha.3"`으로 올린다(SemVer pre-release라 Cargo가 받는다). 그러면 serq-lar는 다시 `serq::VERSION`을 쓴다.
+
+## U12. Completing the language's words — landed
+
+serQ [#622](https://github.com/servingQ/serQ/issues/622),
+[#623](https://github.com/servingQ/serQ/pull/623): the words the editor
+completes are every word the language gives a program, with the role it
+is coloured by. serQ kept them in a dozen tables (`STRUCTURE`,
+`CONTEXT_VARS`, `ENGINE_VALUES`, `Fun`, …), and the distributions' names
+could not be read from outside at all; gathering them here would have been
+a second list. `serq::frontend::highlight::vocabulary` gathers them, and
+`vocabulary()` in `crates/serq-wasm` hands them to the editor
+(`web/src/editor.ts`), which adds the program's own names from the
+`name` pieces of `tokens()` and labels them by the outline. In serQ
+v0.1.6-alpha.4.

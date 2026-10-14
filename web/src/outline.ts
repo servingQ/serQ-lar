@@ -73,6 +73,17 @@ export function outline(json: string, src: string): Outline {
   ) as Outline;
 }
 
+/** What each name the outline declares is: `queue`, a declaration's kind, a member's kind. */
+export function kinds(o: Outline): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const d of o.decls) m.set(d.name, d.kind);
+  for (const q of o.queues) {
+    m.set(q.name, "queue");
+    for (const x of q.members) if (x.name && x.kind !== "entry") m.set(x.name, x.kind);
+  }
+  return m;
+}
+
 /** A function from a UTF-8 byte offset of `src` to its string index. */
 function byteIndex(src: string): (b: number) => number {
   // ASCII text: the two are the same
