@@ -395,7 +395,7 @@ html[data-tab="metrics"] [data-show]:not([data-show~="metrics"]) { display: none
 
 /* ---- Flow: serQ's deployment as nodes to drag and wire (React Flow) ---- */
 .flow { min-height: 420px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--raised); box-shadow: var(--shadow); }
-.flow .react-flow { --xy-background-color: var(--raised); --xy-minimap-background-color: var(--panel); --xy-controls-button-background-color: var(--raised); --xy-controls-button-background-color-hover: var(--panel); --xy-controls-button-color: var(--ink); --xy-controls-button-border-color: var(--line); --xy-background-pattern-color: color-mix(in srgb, var(--dim) 30%, transparent); }
+.flow .react-flow { --xy-background-color: var(--raised); --xy-minimap-background-color: var(--panel); --xy-controls-button-background-color: var(--raised); --xy-controls-button-background-color-hover: var(--panel); --xy-controls-button-color: var(--ink); --xy-controls-button-border-color: var(--line); --xy-background-pattern-color: var(--line); }
 .flow .react-flow__controls, .flow .react-flow__minimap { border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--line); }
 .flow .react-flow__controls-button { width: 28px; height: 28px; border-radius: 0; box-shadow: none; padding: 4px; }
 .fnode { width: 132px; min-height: 44px; padding: 6px 10px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--raised); color: var(--ink); font-size: 11px; display: flex; flex-direction: column; justify-content: center; box-shadow: var(--shadow); }
@@ -407,7 +407,7 @@ html[data-tab="metrics"] [data-show]:not([data-show~="metrics"]) { display: none
 .fnode.k-decision { border-style: dotted; }
 .fnode.k-source, .fnode.k-sink { border-style: dashed; background: transparent; box-shadow: none; }
 .fnode.k-draft { border-style: dashed; border-color: var(--busy); }
-.finstance { width: 100%; height: 100%; padding: 3px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1.2px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--panel) 55%, transparent); color: var(--ink); font-size: 11px; }
+.finstance { width: 100%; height: 100%; padding: 3px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 1.2px solid color-mix(in srgb, var(--ink) 38%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--panel) 55%, transparent); color: var(--ink); font-size: 11px; }
 .finstance span { font-family: var(--font-mono); white-space: nowrap; }
 .finstance small { margin-left: 6px; color: var(--dim); font-family: var(--font-sans); }
 .fpools { list-style: none; margin: 5px 0 0; padding: 4px 0 0; border-top: 1px dashed var(--line); display: flex; flex-direction: column; gap: 2px; }
