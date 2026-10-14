@@ -72,6 +72,14 @@ cap) against one without, the JSON's size, and `JSON.parse` of it.
 | pd-disaggregation/llmd_nixl_pull | 3600 s | 5.0 s | 8.4 s | 4.4 s | 356 MB | 3 846 806 |
 | engines/sglang | 3600 s | 3.4 s | 4.7 s | 1.6 s | 177 MB | 1 810 668 |
 
+With the `series` the metrics board reads (every sample of the client
+metrics and observes, every gauge's change point, added to `run_logged`'s
+JSON by `crates/serq-wasm`), measured on 2026-10-14, serQ `6666dc4`
+(v0.1.6-alpha.1 and one commit), the same command at 120 s: `vllm` logged
+73 ms, 4.6 MB; `llmd_nixl_pull` logged 261 ms, 11.4 MB. The series is
+about a tenth of the log; the wasm grew 1.4 % (1 748 166 bytes, 580 771
+gzipped).
+
 The log costs about as much as the run again, most of it writing JSON, and
 the events are almost all iterations (`iter`, one per engine step, with its
 batch). A replay plays tens of seconds, not an hour: at 120 s the page has

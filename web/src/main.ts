@@ -1,8 +1,10 @@
 import "./style.css";
 import { anchors } from "./anchors";
-import type { Log } from "./events";
+import { Dashboard, withGauges } from "./dashboard";
 import { Player } from "./player";
+import type { Log } from "./events";
 import { esc, render, type Report, type Selection } from "./report";
+import type { Ir, Report as RunReport } from "./series";
 import type { Request, Response } from "./worker";
 
 const programs = import.meta.glob<string>("./examples/*.sq", { query: "?raw", import: "default", eager: true });
@@ -31,6 +33,15 @@ const clock = $<HTMLSpanElement>("clock");
 const counts = $<HTMLSpanElement>("counts");
 const banner = $<HTMLDivElement>("banner");
 const report = $<HTMLDivElement>("report");
+const dashboard = new Dashboard({
+  tiles: $("tiles"),
+  panels: $("panels"),
+  observes: $("observes"),
+  observesBox: $<HTMLDetailsElement>("observes-box"),
+  window: $<HTMLSelectElement>("window"),
+  gauges: $<HTMLButtonElement>("gauges"),
+  note: $("metrics-note"),
+});
 
 // ------------------------------------------------------------ serQ ----
 
@@ -66,6 +77,7 @@ function fail(message: string) {
   banner.textContent = "";
   last = null;
   report.innerHTML = `<pre class="err">${esc(message)}</pre>`;
+  dashboard.clear();
 }
 
 /** Draw the program, run it with the log, and replay the log over the figure. */
@@ -85,7 +97,8 @@ async function drawAndRun() {
   svg.removeAttribute("width");
   svg.removeAttribute("height");
   const at = anchors(svg);
-  const poolStage = poolStages(JSON.parse(irJson.value));
+  const ir = JSON.parse(irJson.value) as Ir;
+  const poolStage = poolStages(ir);
   status.textContent = `drawn in ${drawn.ms.toFixed(1)} ms · ${at.stations.size} station(s) · running…`;
   banner.textContent = "";
   const H = Number(horizon.value);
@@ -96,6 +109,7 @@ async function drawAndRun() {
   const log = j.log;
   last = j;
   showReport();
+  dashboard.show(j as unknown as RunReport, ir, H);
   status.textContent = `drawn in ${drawn.ms.toFixed(1)} ms · ran ${H} s of simulated time in ${ran.ms.toFixed(0)} ms`;
   const n = log.events.length.toLocaleString("en");
   banner.innerHTML = `Replaying serQ's log of this run: <b>${n}</b> events over ${H} s, seed ${Number(seed.value) || 1}.` +
@@ -133,6 +147,7 @@ function tick(t: number) {
   const c = player.counts();
   counts.textContent = `${c.queue} waiting · ${c.resident} in a station` + (c.away ? ` · ${c.away} at a tool` : "");
   if (!player.playing) play.textContent = "Play";
+  dashboard.cursor(t);
 }
 
 // ------------------------------------------------------------ report ----
@@ -243,6 +258,17 @@ step.onclick = () => {
   if (!player) return;
   player.step();
   tick(player.t);
+};
+// a click on a panel seeks the replay to that time
+dashboard.onSeek = (t) => {
+  if (!player) return;
+  player.seek(t);
+  tick(t);
+};
+// the gauges the page offers go into the program, where the viewer sees them, and the run is made again
+dashboard.onAddGauges = (lines) => {
+  source.value = withGauges(source.value, lines);
+  drawAndRun();
 };
 serq({ cmd: "version" }).then((r) => {
   if (r.ok) $<HTMLSpanElement>("version").textContent = `serQ ${r.value} · wasm`;
