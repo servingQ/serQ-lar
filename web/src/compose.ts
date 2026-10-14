@@ -1,8 +1,8 @@
-// Editing the deployment from the figure (docs/editor.md). The palette makes
-// drafts; in Connect mode an arrow dragged from the arrival or a station to
-// a station or a draft writes the call (and the draft's declaration) into
-// the text; the inspector changes the station chosen in the figure. Every
-// change is an edit of the text (edit.ts), which serQ then draws again.
+// Editing the deployment from the Flow view (docs/editor.md). The palette
+// makes drafts; an arrow drawn from the arrival or a station to a station or
+// a draft writes the call (and the draft's declaration) into the text; the
+// inspector changes the station chosen. Every change is an edit of the text
+// (edit.ts), which serQ then draws again.
 
 import { apply as _apply, connect, copy, declarePool, fresh, instance, remove, resize, toggle, type Draft, type Edit, type From, type To } from "./edit";
 import type { Outline, Queue } from "./outline";
@@ -22,167 +22,52 @@ export interface Host {
 }
 
 export class Compose {
-  /** Whether a drag from a station draws an arrow (Connect) or moves the view. */
-  connecting = false;
   private drafts: Draft[] = [];
   private chosen: string | null = null;
-  private wire: SVGSVGElement;
-  private line: SVGLineElement;
-  private dragging: { from: From | null; nic?: Draft; x: number; y: number } | null = null;
 
   constructor(
     private host: Host,
-    private view: HTMLElement,
-    private tray: HTMLElement,
     private inspector: HTMLElement,
   ) {
-    this.wire = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    this.wire.classList.add("wire");
-    this.line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    this.wire.append(this.line);
-    this.wire.style.display = "none";
-    document.body.append(this.wire);
-    tray.addEventListener("pointerdown", (e) => this.trayDown(e));
     inspector.addEventListener("click", (e) => this.inspectorClick(e));
     inspector.addEventListener("submit", (e) => this.inspectorSubmit(e));
   }
 
   // ------------------------------------------------------------ palette ----
 
-  /** A draft of `kind`, beside the figure until an arrow reaches it. */
-  add(kind: "prefill" | "decode" | "delay") {
+  /** A draft of `kind`, beside the deployment until an arrow reaches it. */
+  add(kind: "prefill" | "decode" | "delay"): Draft {
     const name = this.freshName(kind === "prefill" ? "P" : kind === "decode" ? "D" : "hop");
-    if (kind === "delay") this.drafts.push({ kind: "stage", name, text: snip.delay(name) });
-    else this.drafts.push({ kind: "queue", name, role: kind, family: null, text: kind === "prefill" ? snip.prefill(name) : snip.decode(name), relations: [] });
-    this.renderTray();
-    this.connecting = true;
-    this.onMode();
-    this.host.say(`Draft ${name}: drag an arrow from the arrival or a station to it (Connect mode, or a handle in the Edit view).`);
+    const d: Draft =
+      kind === "delay"
+        ? { kind: "stage", name, text: snip.delay(name) }
+        : { kind: "queue", name, role: kind, family: null, text: kind === "prefill" ? snip.prefill(name) : snip.decode(name), relations: [] };
+    this.drafts.push(d);
+    this.onDrafts();
+    this.host.say(`Draft ${name}: draw an arrow from the arrival or a station to it.`);
+    return d;
   }
 
   /** A pool of `count` engines playing `role`, a family (`queue D[3]`): a
    * draft like an engine; its call chooses a member (`choose k in 3 by
    * (work(D[k]))`), and its inspector steps its size. */
-  addPool(role: "prefill" | "decode", count: number) {
+  addPool(role: "prefill" | "decode", count: number): Draft {
     const name = this.freshName(role === "prefill" ? "P" : "D");
     const n = Math.max(1, Math.round(count));
     const text = role === "prefill" ? snip.prefill(name, n) : snip.decode(name, n);
-    this.drafts.push({ kind: "queue", name, role, family: String(n), text, relations: [] });
-    this.renderTray();
-    this.connecting = true;
-    this.onMode();
-    this.host.say(`Draft ${name}[${n}], a pool of ${n} ${role} engines: drag an arrow from the arrival or a station to it.`);
+    const d: Draft = { kind: "queue", name, role, family: String(n), text, relations: [] };
+    this.drafts.push(d);
+    this.onDrafts();
+    this.host.say(`Draft ${name}[${n}], a pool of ${n} ${role} engines: draw an arrow from the arrival or a station to it.`);
+    return d;
   }
-
-  onMode: () => void = () => {};
 
   private freshName(stem: string): string {
     const taken = this.host.text() + " " + this.drafts.map((d) => (d.kind === "nic" ? "" : d.name)).join(" ");
     return fresh(taken, stem);
   }
 
-  private renderTray() {
-    this.tray.innerHTML = "";
-    this.drafts.forEach((d, i) => {
-      const card = document.createElement("div");
-      card.className = `draft ${d.kind}`;
-      card.dataset.draft = String(i);
-      const what = d.kind === "queue" ? (d.family ? `pool of ${d.family} · ${d.role}` : `queue · ${d.role}`) : d.kind === "stage" ? "delay stage" : `${d.queue}'s NIC`;
-      const hint = d.kind === "nic" ? "drag to the queue that reads its KV" : "drop an arrow here";
-      card.innerHTML = `<b>${d.kind === "nic" ? `${d.queue}.nic` : d.name}</b><span>${what}</span><small>${hint}</small><button class="x" title="Discard the draft" aria-label="Discard">×</button>`;
-      this.tray.append(card);
-    });
-    this.tray.hidden = this.drafts.length === 0;
-    this.onDrafts();
-  }
-
-  private trayDown(e: PointerEvent) {
-    const card = (e.target as Element).closest<HTMLElement>(".draft");
-    if (!card) return;
-    const i = Number(card.dataset.draft);
-    if ((e.target as Element).closest(".x")) {
-      this.drafts.splice(i, 1);
-      this.renderTray();
-      return;
-    }
-    const d = this.drafts[i];
-    // a NIC's card is where its copy starts: drag it to the reader
-    if (d.kind === "nic") this.startDrag(e, null, d);
-  }
-
   // ------------------------------------------------------------ arrows ----
-
-  /** A press on the figure in Connect mode: an arrow starts if it is on the arrival or a station. */
-  down(e: PointerEvent): boolean {
-    if (!this.connecting) return false;
-    const el = e.target as Element;
-    const station = el.closest<SVGGElement>("g[data-stage]");
-    const arrival = el.closest('path[data-role="arrival"]') ?? (el.closest("text")?.textContent?.includes("sessions") ? el : null);
-    if (station) this.startDrag(e, { kind: "station", stage: station.dataset.stage! });
-    else if (arrival) this.startDrag(e, { kind: "arrival" });
-    else return false;
-    return true;
-  }
-
-  private startDrag(e: PointerEvent, from: From | null, nic?: Draft) {
-    e.preventDefault();
-    e.stopPropagation();
-    this.dragging = { from, nic, x: e.clientX, y: e.clientY };
-    this.wire.style.display = "block";
-    this.drawWire(e.clientX, e.clientY);
-    const move = (m: PointerEvent) => {
-      this.drawWire(m.clientX, m.clientY);
-      this.hover(m.clientX, m.clientY);
-    };
-    const up = (u: PointerEvent) => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      this.wire.style.display = "none";
-      this.hover(-1, -1);
-      this.drop(u.clientX, u.clientY);
-      this.dragging = null;
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  }
-
-  private drawWire(x: number, y: number) {
-    const d = this.dragging!;
-    this.line.setAttribute("x1", String(d.x));
-    this.line.setAttribute("y1", String(d.y));
-    this.line.setAttribute("x2", String(x));
-    this.line.setAttribute("y2", String(y));
-  }
-
-  /** What is under a point that an arrow can end at. */
-  private target(x: number, y: number): To | null {
-    const el = document.elementFromPoint(x, y);
-    if (!el) return null;
-    const card = el.closest<HTMLElement>(".draft");
-    if (card) {
-      const d = this.drafts[Number(card.dataset.draft)];
-      return d && d.kind !== "nic" ? { kind: "draft", draft: d } : null;
-    }
-    const g = el.closest<SVGGElement>("g[data-stage]");
-    return g && this.view.contains(g) ? { kind: "station", stage: g.dataset.stage! } : null;
-  }
-
-  private lit: Element | null = null;
-  private hover(x: number, y: number) {
-    this.lit?.classList.remove("drop");
-    this.lit = null;
-    if (x < 0) return;
-    const el = document.elementFromPoint(x, y);
-    const t = el?.closest(".draft, g[data-stage]") ?? null;
-    if (t) t.classList.add("drop");
-    this.lit = t;
-  }
-
-  private drop(x: number, y: number) {
-    const d = this.dragging;
-    const to = this.target(x, y);
-    if (d && to) this.link(d.from, to, d.nic);
-  }
 
   /** An arrow from `from`, or from a NIC draft `nic` to the queue that reads
    * its KV, to `to`: written into the text. Whether it was; why not is said. */
@@ -208,7 +93,7 @@ export class Compose {
       return false;
     }
     this.host.apply(edits);
-    this.renderTray();
+    this.onDrafts();
     const what = to.kind === "draft" ? (to.draft.kind === "nic" ? "" : to.draft.name) : to.stage;
     this.host.say(nic && nic.kind === "nic" ? `A KV copy from ${nic.queue} to ${what}, pulled by the reader: written into the text.` : `An arrow to ${what}: written into the text. Ctrl+Z undoes it.`);
     return true;
@@ -244,8 +129,8 @@ export class Compose {
   nicDraft(stage: string) {
     const name = stage.replace(/\.nic$/, "");
     if (!this.drafts.some((d) => d.kind === "nic" && d.queue === name)) this.drafts.push({ kind: "nic", queue: name });
-    this.renderTray();
-    this.host.say(`Draft ${name}.nic: drag from it to the queue that reads the KV from ${name}.`);
+    this.onDrafts();
+    this.host.say(`Draft ${name}.nic: draw an arrow from it to the queue that reads the KV from ${name}.`);
   }
 
   /** Declare a memory pool in a station's queue, with its capacity: request slots on its engine, or KV blocks on its device. */
@@ -265,10 +150,10 @@ export class Compose {
   /** Discard a draft. */
   discard(d: Draft) {
     this.drafts = this.drafts.filter((x) => x !== d);
-    this.renderTray();
+    this.onDrafts();
   }
 
-  /** The drafts, in the palette's order. */
+  /** The drafts, in the order they were made. */
   get draftList(): readonly Draft[] {
     return this.drafts;
   }
@@ -361,10 +246,8 @@ export class Compose {
         const text = snip.rename(src.slice(q.range[0], q.range[1]), q.name, name);
         const relations = ol.relations.filter((r) => r.reader === q.name).map((r) => snip.rename(src.slice(r.range[0], r.range[1]), r.reader, name));
         this.drafts.push({ kind: "queue", name, role: q.roles[0], family: q.family, text, relations });
-        this.renderTray();
-        this.connecting = true;
-        this.onMode();
-        return this.host.say(`Draft ${name}, a copy of ${q.name}: drag an arrow to it to place it.`);
+        this.onDrafts();
+        return this.host.say(`Draft ${name}, a copy of ${q.name}: draw an arrow to it to place it.`);
       }
       case "remove":
         this.chosen = null;

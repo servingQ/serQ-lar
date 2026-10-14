@@ -397,7 +397,7 @@ export function components(j: Report): NonNullable<Selection>[] {
   return out;
 }
 
-function chips(j: Report, sel: Selection): string {
+function chips(j: Report, sel: Selection, whole: boolean): string {
   const chip = (c: NonNullable<Selection> | null, text: string) =>
     `<button class="chip" data-kind="${c ? c.kind : ""}" data-name="${c ? esc(c.name) : ""}" aria-pressed="${
       (c === null && sel === null) || (c !== null && sel !== null && c.kind === sel.kind && c.name === sel.name)
@@ -406,14 +406,16 @@ function chips(j: Report, sel: Selection): string {
   const stages = all.filter((c) => c.kind === "stage");
   const pools = all.filter((c) => c.kind === "pool");
   return (
-    `<div class="chips">${chip(null, "all")}` +
+    `<div class="chips">${whole ? chip(null, "all") : ""}` +
     (stages.length ? `<span class="dim">stages</span>${stages.map((c) => chip(c, c.name)).join("")}` : "") +
     (pools.length ? `<span class="dim">pools</span>${pools.map((c) => chip(c, c.name)).join("")}` : "") +
     `</div>`
   );
 }
 
-/** The report as HTML: the chips to choose a component, then the whole report or the chosen component. */
-export function render(j: Report, sel: Selection): string {
-  return chips(j, sel) + (sel ? one(j, sel) : overview(j));
+/** The report as HTML: the chips to choose a component, then the whole
+ * report or the chosen component. Without `whole`, there is no "all" chip
+ * and nothing but the chips until a component is chosen. */
+export function render(j: Report, sel: Selection, whole = true): string {
+  return chips(j, sel, whole) + (sel ? one(j, sel) : whole ? overview(j) : "");
 }
