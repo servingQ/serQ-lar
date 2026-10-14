@@ -2,8 +2,11 @@ import "./style.css";
 import { anchors } from "./anchors";
 import { Camera } from "./camera";
 import { Compose } from "./compose";
+import type { Draft, From, To } from "./edit";
 import { Dashboard, withGauges } from "./dashboard";
 import { Editor } from "./editor";
+import { graphOf, SINK, SOURCE, draftId } from "./flow/graph";
+import type { EditHost } from "./flow/EditView";
 import type { Log } from "./events";
 import { outline as readOutline, type Outline } from "./outline";
 import { Player } from "./player";
@@ -134,6 +137,7 @@ async function redraw(runNow = false) {
     ranFor = null;
     markSelected();
   }
+  showGraph();
   status.textContent = `drawn in ${drawn.ms.toFixed(1)} ms` + (key === ranFor ? ranNote : "");
   if (key === ranFor) {
     view.classList.remove("stale");
@@ -346,6 +350,12 @@ $<HTMLButtonElement>("zoom-fit").onclick = () => camera.fit();
 
 let currentOutline: Outline | null = null;
 let sayTimer = 0;
+function sayIt(m: string, bad?: boolean) {
+  say.textContent = m;
+  say.classList.toggle("bad", !!bad);
+  clearTimeout(sayTimer);
+  sayTimer = window.setTimeout(() => (say.textContent = ""), 9000);
+}
 const compose = new Compose(
   {
     text: () => editor.text,
@@ -355,12 +365,7 @@ const compose = new Compose(
       editor.view.dispatch({ selection: { anchor: at[0], head: at[1] }, scrollIntoView: true });
       editor.view.focus();
     },
-    say: (m, bad) => {
-      say.textContent = m;
-      say.classList.toggle("bad", !!bad);
-      clearTimeout(sayTimer);
-      sayTimer = window.setTimeout(() => (say.textContent = ""), 9000);
-    },
+    say: (m, bad) => sayIt(m, bad),
   },
   view,
   $<HTMLDivElement>("drafts"),
@@ -382,6 +387,76 @@ toolLink.onclick = () => {
   compose.connecting = true;
   showMode();
 };
+// ------------------------------------------------------------ the Edit view ----
+
+/** Replay: serQ's figure with the run over it. Edit: the same deployment as nodes to drag and wire. */
+let mode: "replay" | "edit" = "replay";
+const flowEl = $<HTMLDivElement>("flow");
+const tabReplay = $<HTMLButtonElement>("tab-replay");
+const tabEdit = $<HTMLButtonElement>("tab-edit");
+const replayTools = $<HTMLSpanElement>("replay-tools");
+
+/** A node of the Edit view as an end of an arrow: the arrival (or the router's decision, the start of the way), a station, or a draft. */
+function endOf(id: string): { from?: From; to?: To; nic?: Draft } {
+  if (id === SOURCE || id.startsWith("#")) return { from: { kind: "arrival" } };
+  const d = compose.draftList.find((_, i) => draftId(i) === id);
+  if (d) return d.kind === "nic" ? { nic: d } : { to: { kind: "draft", draft: d } };
+  return { from: { kind: "station", stage: id }, to: { kind: "station", stage: id } };
+}
+
+const editHost: EditHost = {
+  connect(from, to) {
+    if (to === SINK) return void sayIt("A session leaves where its way ends: serQ draws the exit, nothing to connect.", true);
+    if (to.startsWith("#") || to === SOURCE) return void sayIt("An arrow ends at a station or a draft.", true);
+    const a = endOf(from);
+    const b = endOf(to);
+    if (!b.to) return void sayIt("A NIC's draft starts a copy: draw its arrow to the queue that reads.", true);
+    if (!a.from && !a.nic) return void sayIt("A draft is placed by an arrow into it, not out of it.", true);
+    compose.link(a.from ?? null, b.to, a.nic);
+  },
+  select(id) {
+    compose.choose(id && !id.startsWith("#") && id !== SOURCE && id !== SINK && !id.startsWith("draft:") ? id : null);
+  },
+  remove(ids) {
+    for (const id of ids) {
+      const d = compose.draftList.find((_, i) => draftId(i) === id);
+      if (d) compose.discard(d);
+      else compose.removeStation(id);
+    }
+  },
+  layoutKey: () => `serq-lar:layout:${select.value}`,
+};
+/** The Edit view, loaded the first time it is asked for: React and React Flow are its alone. */
+let editView: Promise<{ show(g: ReturnType<typeof graphOf>): void }> | null = null;
+
+/** Give the Edit view serQ's graph of the figure as drawn now. */
+function showGraph() {
+  if (mode !== "edit" || !drawnFrom) return;
+  const svg = view.querySelector("svg");
+  if (!svg) return;
+  const g = graphOf(svg, JSON.parse(drawnFrom.ir), [...compose.draftList]);
+  editView ??= import("./flow/EditView").then((m) => m.mountEditView(flowEl, editHost));
+  editView.then((v) => v.show(g));
+}
+compose.onDrafts = showGraph;
+
+function setMode(m: "replay" | "edit") {
+  mode = m;
+  tabReplay.setAttribute("aria-selected", String(m === "replay"));
+  tabEdit.setAttribute("aria-selected", String(m === "edit"));
+  tabReplay.setAttribute("aria-pressed", String(m === "replay"));
+  tabEdit.setAttribute("aria-pressed", String(m === "edit"));
+  flowEl.hidden = m !== "edit";
+  replayTools.hidden = m !== "replay";
+  // the figure stays laid out (the graph is read off it), out of sight
+  view.classList.toggle("offstage", m === "edit");
+  view.style.width = m === "edit" ? `${flowEl.parentElement!.clientWidth}px` : "";
+  showGraph();
+}
+tabReplay.onclick = () => setMode("replay");
+tabEdit.onclick = () => setMode("edit");
+setMode("replay");
+
 $<HTMLButtonElement>("add-prefill").onclick = () => compose.add("prefill");
 $<HTMLButtonElement>("add-decode").onclick = () => compose.add("decode");
 $<HTMLButtonElement>("add-delay").onclick = () => compose.add("delay");

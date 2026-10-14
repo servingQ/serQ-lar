@@ -46,13 +46,22 @@ See [upstream.md](upstream.md), U10.
 2. **Zoom and pan.** Wheel or pinch about the pointer, drag to pan,
    double-click or Fit to fit. The replay's canvas follows (`camera.ts`).
 3. **Palette.** + Prefill, + Decode, + Delay: a draft.
-4. **Arrows** (Connect mode). From the arrival or a station to a station
+4. **The Edit view** (React Flow, the Edit tab). serQ's graph as nodes to
+   drag and wire: the nodes and arrows are read off serQ's figure
+   (`data-node`, `data-from`, `data-to`, `data-copy`), the kinds off the IR,
+   the layout is serQ's with its columns and rows kept and tightened
+   (`flow/graph.ts`). Each node has an input on its left and an output on
+   its right; the arrival only an output, the exit only an input. A
+   connection between two handles is an arrow below; a node dragged keeps
+   its place in this browser (a layout, not the program); Delete removes a
+   station; "serQ's layout" puts every node back.
+5. **Arrows** (Connect mode, or a connection in the Edit view). From the arrival or a station to a station
    or a draft: the target's call after the source's, in the gateway's
    route or the server; a family's call chooses its member. From a NIC's
    draft card to a queue: the KV copy (`kvt.nixl_pull`), with the NICs,
    the `use`s, the reader's `connector` and its entry and call `from` the
    source.
-5. **Inspector** (click a station or a copy). Instances −/+ (the family's
+6. **Inspector** (click a station or a copy). Instances −/+ (the family's
    `let`), pull ⇄ push (a push dispatches the source's call with `fork`,
    which serQ requires), + NIC, + Pool, Duplicate (a draft copy, with the
    relations it reads by), Remove (the queue, its calls and its copies;

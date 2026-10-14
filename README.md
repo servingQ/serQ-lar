@@ -43,7 +43,12 @@ replay zooms with it.
 
 The figure edits the text, too. + Prefill and + Decode make a draft
 engine; in Connect mode an arrow dragged from the arrival or a station to
-it writes the queue and its call into the program. Click a station for
+it writes the queue and its call into the program. The Edit tab shows the
+same deployment as nodes to drag and wire (React Flow): serQ's stations
+and arrows, where serQ placed them, each with an input on its left and an
+output on its right; an arrow drawn from one handle to another is written
+into the program, a node dragged stays where it was put (in this browser
+only), and Delete removes a station. Click a station for
 its instances, a NIC, a pool, the KV copy's pull or push (serQ writes
 which on the copy), a duplicate, or its removal. Every edit is text in
 the program, one step to undo, and serQ says whether it is a program
@@ -65,6 +70,8 @@ web/                Vite + TypeScript, no framework
   src/edit.ts         an edit from the figure as text, where the outline says
   src/snippets.ts     the text the palette writes
   src/compose.ts      the palette, the drafts, the arrows, the inspector
+  src/flow/graph.ts   serQ's figure as a graph: its nodes, arrows and layout
+  src/flow/EditView.tsx  the Edit view in React Flow, loaded when opened
   src/anchors.ts      where each stage, pool, arrival and exit is in the SVG
   src/events.ts       the run log's shape (serQ's docs/reference/log.md)
   src/player.ts       replays the log on a canvas over the SVG

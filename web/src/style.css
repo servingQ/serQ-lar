@@ -241,3 +241,25 @@ textarea { width: 100%; height: 64vh; margin-top: 8px; padding: 8px; font-size: 
 .cm-diagnostic-error { border-left-color: var(--alert); }
 .view svg [data-copy] { cursor: pointer; }
 .metrics.stale { opacity: 0.5; }
+
+/* the Edit view: serQ's deployment as nodes to drag and wire (React Flow) */
+.flow { height: 72vh; min-height: 420px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg); }
+.flow[hidden] { display: none; }
+.view.offstage { position: absolute; left: -100000px; top: 0; visibility: hidden; pointer-events: none; }
+.tabs button[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+#replay-tools[hidden] { display: none; }
+.fnode { width: 132px; min-height: 44px; padding: 5px 10px; border: 1.5px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font-size: 11px; display: flex; flex-direction: column; justify-content: center; }
+.fnode b { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fnode small { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fnode.k-engine { border-color: var(--decode); }
+.fnode.k-nic { border-color: var(--plain); border-radius: 22px; }
+.fnode.k-delay, .fnode.k-station { border-color: var(--dim); }
+.fnode.k-decision { border-style: dotted; }
+.fnode.k-source, .fnode.k-sink { border-style: dashed; background: transparent; }
+.fnode.k-draft { border-style: dashed; border-color: var(--busy); }
+.react-flow__node.selected .fnode { box-shadow: 0 0 0 2px var(--decode); }
+.react-flow__handle { width: 10px; height: 10px; background: var(--bg); border: 2px solid var(--ink); }
+.react-flow__handle:hover, .react-flow__handle.connectingto { background: var(--busy); border-color: var(--busy); }
+.react-flow__edge-textbg { fill: var(--panel); }
+.react-flow__edge-text { fill: var(--ink); font-size: 10px; }
+.flow-btn { font-size: 12px; padding: 3px 9px; }

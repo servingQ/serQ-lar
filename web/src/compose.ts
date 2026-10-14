@@ -57,7 +57,7 @@ export class Compose {
     this.renderTray();
     this.connecting = true;
     this.onMode();
-    this.host.say(`Draft ${name}: in Connect mode, drag an arrow from the arrival or a station to it.`);
+    this.host.say(`Draft ${name}: drag an arrow from the arrival or a station to it (Connect mode, or a handle in the Edit view).`);
   }
 
   onMode: () => void = () => {};
@@ -79,6 +79,7 @@ export class Compose {
       this.tray.append(card);
     });
     this.tray.hidden = this.drafts.length === 0;
+    this.onDrafts();
   }
 
   private trayDown(e: PointerEvent) {
@@ -166,26 +167,62 @@ export class Compose {
   private drop(x: number, y: number) {
     const d = this.dragging;
     const to = this.target(x, y);
-    if (!d || !to) return;
+    if (d && to) this.link(d.from, to, d.nic);
+  }
+
+  /** An arrow from `from`, or from a NIC draft `nic` to the queue that reads
+   * its KV, to `to`: written into the text. Whether it was; why not is said. */
+  link(from: From | null, to: To, nic?: Draft): boolean {
     const ol = this.host.outline();
-    if (!ol) return this.host.say("serQ cannot read the text as it is: fix it first.", true);
+    if (!ol) {
+      this.host.say("serQ cannot read the text as it is: fix it first.", true);
+      return false;
+    }
     const src = this.host.text();
     let edits: Edit[] | string;
-    if (d.nic && d.nic.kind === "nic") {
-      if (to.kind !== "station") return;
+    if (nic && nic.kind === "nic") {
+      if (to.kind !== "station") return false;
       const reader = to.stage.replace(/\.nic$/, "");
-      edits = copy(src, ol, d.nic.queue, reader, "pull");
-      if (typeof edits !== "string") this.drafts = this.drafts.filter((x) => x !== d.nic);
-    } else if (d.from) {
-      edits = connect(src, ol, d.from, to);
+      edits = copy(src, ol, nic.queue, reader, "pull");
+      if (typeof edits !== "string") this.drafts = this.drafts.filter((x) => x !== nic);
+    } else if (from) {
+      edits = connect(src, ol, from, to);
       if (typeof edits !== "string" && to.kind === "draft") this.drafts = this.drafts.filter((x) => x !== to.draft);
-    } else return;
-    if (typeof edits === "string") return this.host.say(edits, true);
+    } else return false;
+    if (typeof edits === "string") {
+      this.host.say(edits, true);
+      return false;
+    }
     this.host.apply(edits);
     this.renderTray();
     const what = to.kind === "draft" ? (to.draft.kind === "nic" ? "" : to.draft.name) : to.stage;
-    this.host.say(d.nic ? `A KV copy from ${d.nic.kind === "nic" ? d.nic.queue : ""} to ${what}, pulled by the reader: written into the text.` : `An arrow to ${what}: written into the text. Ctrl+Z undoes it.`);
+    this.host.say(nic && nic.kind === "nic" ? `A KV copy from ${nic.queue} to ${what}, pulled by the reader: written into the text.` : `An arrow to ${what}: written into the text. Ctrl+Z undoes it.`);
+    return true;
   }
+
+  /** Remove the queue a station is, with its calls and copies. */
+  removeStation(stage: string) {
+    const ol = this.host.outline();
+    const name = stage.replace(/\.nic$/, "");
+    if (!ol || !ol.queues.some((q) => q.name === name)) return this.host.say(`\`${stage}\` is no queue: remove it in the text.`, true);
+    if (this.chosen === stage) this.chosen = null;
+    this.host.apply(remove(this.host.text(), ol, name));
+    this.host.say(`${name} removed, with its calls and copies; serQ says if anything else names it. Ctrl+Z undoes it.`);
+  }
+
+  /** Discard a draft. */
+  discard(d: Draft) {
+    this.drafts = this.drafts.filter((x) => x !== d);
+    this.renderTray();
+  }
+
+  /** The drafts, in the palette's order. */
+  get draftList(): readonly Draft[] {
+    return this.drafts;
+  }
+
+  /** The drafts changed (one made, placed or discarded). */
+  onDrafts: () => void = () => {};
 
   // ------------------------------------------------------------ inspector ----
 

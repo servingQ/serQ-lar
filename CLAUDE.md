@@ -19,10 +19,13 @@ server, and the site must stay deployable to GitHub Pages.
 - **The replay is serQ's log, whole or cut.** The page replays the log of
   the run it made (`run_logged`), never a made-up one; when the event cap
   cut the log short, the banner says so.
-- **Light, and not hand-made where a library fits.** No UI framework (React
-  and the like); a focused library for a hard widget is welcome rather
-  than one built by hand (CodeMirror is the text). Never a library that
-  draws the deployment itself: the figure is serQ's. The wasm is the
+- **Light, and not hand-made where a library fits.** A focused library for
+  a hard widget is welcome rather than one built by hand: CodeMirror is
+  the text, React Flow the Edit view. React is the Edit view's alone,
+  loaded when it is opened; the rest of the page has no UI framework. The
+  Replay view is serQ's figure; the Edit view draws serQ's graph (its
+  nodes, arrows and layout read off that figure), never one of its own,
+  and every arrow drawn there goes into the text. The wasm is the
   budget. Report the size (`scripts/build-wasm.sh` prints it) when it
   moves by more than 10 %.
 - **Numbers in docs are measured**, with the date, the serQ commit and the
