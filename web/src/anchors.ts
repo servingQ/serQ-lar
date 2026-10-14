@@ -50,7 +50,7 @@ function box(el: SVGGraphicsElement): Box {
 }
 
 /** The points of a path written as `M x y L x y …` (what serQ's writer emits). */
-function points(path: SVGPathElement): Point[] {
+export function points(path: SVGPathElement): Point[] {
   const d = path.getAttribute("d") ?? "";
   const out: Point[] = [];
   for (const m of d.matchAll(/[ML]\s*(-?[\d.]+)\s+(-?[\d.]+)/g)) out.push({ x: Number(m[1]), y: Number(m[2]) });

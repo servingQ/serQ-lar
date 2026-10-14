@@ -33,7 +33,11 @@
       <section class="stage">
         <div id="banner" class="banner"></div>
         <div class="tools" role="toolbar" aria-label="Edit the deployment">
-          <span class="seg" role="group" aria-label="What a drag on a station does">
+          <span class="seg tabs" role="tablist" aria-label="View">
+            <button id="tab-replay" role="tab" title="serQ's figure, with the run replayed over it">Replay</button>
+            <button id="tab-edit" role="tab" title="The deployment as nodes to drag and wire: an arrow between two handles goes into the text">Edit</button>
+          </span>
+          <span class="seg" id="replay-tools" role="group" aria-label="What a drag on a station does">
             <button id="tool-move" title="Drag moves the figure">Move</button>
             <button id="tool-link" title="Drag from the arrival or a station to a station or a draft: the call goes into the text">Connect</button>
           </span>
@@ -44,6 +48,7 @@
         </div>
         <div id="drafts" class="drafts" hidden></div>
         <div id="inspector" class="inspector" hidden></div>
+        <div id="flow" class="flow" hidden></div>
         <div id="view" class="view">
           <canvas id="overlay"></canvas>
           <div id="tip" class="tip" hidden></div>

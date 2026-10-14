@@ -4,6 +4,14 @@ import { defineConfig } from "vite";
 // (https://<owner>.github.io/serq-lar/).
 export default defineConfig({
   base: "./",
-  build: { target: "es2022" },
   worker: { format: "es" },
+  // React Flow marks its module "use client" for React Server Components, which a static page has none of
+  build: {
+    target: "es2022",
+    rollupOptions: {
+      onwarn(w, warn) {
+        if (w.code !== "MODULE_LEVEL_DIRECTIVE") warn(w);
+      },
+    },
+  },
 });
