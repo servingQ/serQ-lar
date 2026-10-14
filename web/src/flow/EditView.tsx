@@ -10,9 +10,11 @@
 // dragged and dropped, never clicked: an engine or a pool of engines on the
 // canvas is a draft where it lands, on a station called by it; a memory
 // pool on an engine is declared there; an arrow or a KV transfer on a
-// station starts there, and the station clicked next is its other end.
-// The run plays over it (replay.ts): a canvas above the nodes and edges,
-// under the panels, which the page's player draws on.
+// station starts there, and the station clicked next is its other end. An
+// engine clicked is made a prefiller or a decoder on its toolbar, a KV
+// transfer clicked a pull or a push. The run plays over it (replay.ts): a
+// canvas above the nodes and edges, under the panels, which the page's
+// player draws on.
 
 import {
   Background,
@@ -36,12 +38,14 @@ import {
   useEdgesState,
   useNodesState,
   useReactFlow,
+  useStore,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { createContext, type DragEvent, type FormEvent, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, type DragEvent, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Draft } from "../edit";
 import type { View } from "../player";
+import type { Role } from "../snippets";
 import { type Graph, type GraphInstance, type GraphNode, SINK, SOURCE } from "./graph";
 import { flowTransform, type Placed, toAnchor } from "./replay";
 import { avoid, labelAt, type Point, pathOf, route } from "./route";
@@ -49,7 +53,7 @@ import { avoid, labelAt, type Point, pathOf, route } from "./route";
 export interface EditHost {
   /** An arrow drawn from node `from` to node `to`. */
   connect(from: string, to: string): void;
-  /** A node clicked (its inspector), or the empty canvas (`null`). */
+  /** A node clicked (its part of the run's report), or the empty canvas (`null`). */
   select(id: string | null): void;
   /** Nodes deleted with the Delete key. */
   remove(ids: string[]): void;
@@ -57,12 +61,16 @@ export interface EditHost {
   layoutKey(): string;
   /** Make a station's engine and NIC an instance. */
   instance(id: string): void;
-  /** A NIC for a station's queue (a draft, until its copy is drawn). */
-  nic(id: string): void;
   /** Declare a memory pool in a station's queue, with its capacity (slots, or tokens of KV). */
   pool(id: string, name: string, kind: "slots" | "blocks", cap: string): void;
   /** A KV copy from one station's queue to another's, a pull or a push. */
   copy(from: string, to: string, mode: "pull" | "push"): void;
+  /** The KV copy between two stations made a pull or a push. */
+  mode(from: string, to: string, mode: "pull" | "push"): void;
+  /** The role an engine or a draft engine plays, a prefiller's or a decoder's, if either. */
+  role(id: string): Role | null;
+  /** An engine or a draft engine made a prefiller or a decoder. */
+  setRole(id: string, role: Role): void;
   /** A part from the sidebar made a draft: the draft, and its node's id. */
   add(part: Part): { draft: Draft; id: string };
   /** A line for the viewer: what was done, or why it was not. */
@@ -84,14 +92,16 @@ export interface ReplaySurface {
   toAnchor(clientX: number, clientY: number): Point;
 }
 
-/** A node the sidebar makes: an engine, a delay, or a pool of `count` engines. */
-export type Part = { kind: "prefill" | "decode" | "delay" } | { kind: "pool"; role: "prefill" | "decode"; count: number };
+/** A node the sidebar makes: an engine, a delay, or a pool of `count`
+ * engines. An engine takes its role (prefill or decode) clicked. */
+export type Part = { kind: "engine" | "delay" } | { kind: "pool"; count: number };
 
 /** What a part in the sidebar does where it is dropped: a node (`Part`); a
- * memory pool, on an engine; an arrow (a call) or a KV transfer, from a
- * station, to the station clicked next. */
+ * memory pool, on an engine; an arrow (a call) or a KV transfer (pulled,
+ * until it is clicked and made a push), from a station, to the station
+ * clicked next. */
 type Tool = { kind: "node"; part: Part } | { kind: "memory"; pool: "blocks" | "slots" } | { kind: "arrow"; arrow: Arrow };
-type Arrow = "call" | "pull" | "push";
+type Arrow = "call" | "kv";
 
 /** The type a part is dragged as: the canvas takes nothing else. */
 const PART = "application/x-serq-part";
@@ -107,8 +117,7 @@ function takes(t: Tool, n: GraphNode): boolean {
 /** What an arrow being drawn says it wants next. */
 const WANTS: Record<Arrow, (from: string) => string> = {
   call: (f) => `A call from ${f}: click the station or draft it calls`,
-  pull: (f) => `KV from ${f}, pulled: click the queue that reads it`,
-  push: (f) => `KV from ${f}, pushed: click the queue it goes to`,
+  kv: (f) => `KV from ${f}: click the queue that reads it`,
 };
 
 const Host = createContext<EditHost | null>(null);
@@ -123,14 +132,15 @@ type FlowNode = SerqNodeT | InstanceNodeT;
  * (`.fcount`); an engine, the bar its forward pass fills. A station chosen
  * has its edits on a toolbar above it. */
 function SerqNode({ id, data, parentId, selected }: NodeProps<SerqNodeT>) {
-  const n = data.node;
   const host = useContext(Host)!;
+  const n = data.node;
   const nicDraft = n.kind === "draft" && n.draft?.kind === "nic";
   const input = n.kind !== "source" && !nicDraft;
   const output = n.kind !== "sink" && (n.kind !== "draft" || nicDraft);
   const station = n.kind === "engine" || n.kind === "nic" || n.kind === "station" || n.kind === "delay";
+  const role = n.kind === "engine" || n.draft?.kind === "queue" ? host.role(id) : null;
   return (
-    <div className={`fnode k-${n.kind}`} title={[n.title ?? n.label, n.sub, n.note].filter(Boolean).join("\n")}>
+    <div className={`fnode k-${n.kind}${role ? ` r-${role}` : ""}`} title={[n.title ?? n.label, n.sub, n.note].filter(Boolean).join("\n")}>
       {input && <Handle type="target" position={Position.Left} />}
       <div className="fhead">
         <b>{n.title ?? n.label}</b>
@@ -173,16 +183,32 @@ function SerqNode({ id, data, parentId, selected }: NodeProps<SerqNodeT>) {
         </ul>
       ) : null}
       {output && <Handle type="source" position={Position.Right} />}
-      {n.kind === "engine" || n.kind === "nic" ? (
-        <Tools id={id} engine={n.kind === "engine"} inInstance={!!parentId} hasNic={!!data.nic} hasKv={!!n.pools?.some((p) => p.kind === "blocks")} open={!!selected} />
-      ) : (
-        (n.kind === "station" || n.kind === "delay") && (
-          <NodeToolbar isVisible={!!selected} position={Position.Top} className="ftools">
-            <CodeButton id={id} />
-          </NodeToolbar>
-        )
+      {n.kind !== "source" && n.kind !== "sink" && n.kind !== "decision" && !nicDraft && (
+        <NodeToolbar isVisible={!!selected} position={Position.Top} className="ftools">
+          {role && <RoleSwitch id={id} role={role} />}
+          {n.kind === "engine" && !parentId && (
+            <button onClick={() => host.instance(id)} title={`Bundle ${id} and ${id}.nic as an instance: ${id} becomes a family its calls choose a member of`}>
+              ⊞ Make instance
+            </button>
+          )}
+          {n.kind !== "draft" && <CodeButton id={id} />}
+        </NodeToolbar>
       )}
     </div>
+  );
+}
+
+/** An engine's role, a prefiller's or a decoder's: the other one clicked rewrites it. */
+function RoleSwitch({ id, role }: { id: string; role: Role }) {
+  const host = useContext(Host)!;
+  return (
+    <span className="seg" role="group" aria-label="Role">
+      {(["prefill", "decode"] as const).map((r) => (
+        <button key={r} className={`k-${r}`} aria-pressed={role === r} onClick={() => host.setRole(id, r)} title={r === "prefill" ? "A prefiller: computes the prompt and leases the KV for a reader" : "A decoder: prefills locally, or reads the KV a prefiller leased, and decodes"}>
+          {r === "prefill" ? "Prefill" : "Decode"}
+        </button>
+      ))}
+    </span>
   );
 }
 
@@ -196,67 +222,6 @@ function CodeButton({ id }: { id: string }) {
   );
 }
 
-/** The edits of a chosen station: bundle it with its NIC as an instance,
- * give it a NIC, declare a memory pool (KV blocks only where the device has
- * none: serQ takes one KV pool a device). */
-function Tools(props: { id: string; engine: boolean; inInstance: boolean; hasNic: boolean; hasKv: boolean; open: boolean }) {
-  const { id, engine, inInstance, hasNic, hasKv, open } = props;
-  const host = useContext(Host)!;
-  const [form, setForm] = useState(false);
-  const [kind, setKind] = useState<"slots" | "blocks">(hasKv ? "slots" : "blocks");
-  const [name, setName] = useState(hasKv ? "waitq" : "kv");
-  const [cap, setCap] = useState(hasKv ? "16" : "160000");
-  useEffect(() => setForm(false), [open]);
-  const station = id.replace(/\.nic$/, "");
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!/^[A-Za-z_]\w*$/.test(name)) return;
-    host.pool(station, name, kind, cap.trim() || "16");
-    setForm(false);
-  };
-  return (
-    <NodeToolbar isVisible={open} position={Position.Top} className="ftools">
-      {!inInstance && (
-        <button onClick={() => host.instance(station)} title={`Bundle ${station} and ${station}.nic as an instance: ${station} becomes a family its calls choose a member of`}>
-          ⊞ Make instance
-        </button>
-      )}
-      {engine && !hasNic && (
-        <button onClick={() => host.nic(id)} title="A NIC for a KV copy out of this queue">
-          + NIC
-        </button>
-      )}
-      {form ? (
-        <form onSubmit={submit} className="fpool-form">
-          <select
-            value={kind}
-            aria-label="Pool kind"
-            onChange={(e) => {
-              const k = e.target.value === "slots" ? "slots" : "blocks";
-              setKind(k);
-              setName(k === "slots" ? "waitq" : "kv");
-              setCap(k === "slots" ? "16" : "160000");
-            }}
-          >
-            {!hasKv && <option value="blocks">KV blocks</option>}
-            <option value="slots">request slots</option>
-          </select>
-          <input value={name} onChange={(e) => setName(e.target.value)} size={6} aria-label="Pool name" pattern="[A-Za-z_][A-Za-z0-9_]*" required autoFocus />
-          <label>
-            cap <input value={cap} onChange={(e) => setCap(e.target.value)} size={6} aria-label={kind === "slots" ? "Capacity in requests" : "Capacity in tokens of KV"} required />
-          </label>
-          <button>Declare</button>
-        </form>
-      ) : (
-        <button onClick={() => setForm(true)} title={`Declare a memory pool in ${station}: KV blocks on its device, or request slots on its engine`}>
-          + Memory pool
-        </button>
-      )}
-      {!form && <CodeButton id={id} />}
-    </NodeToolbar>
-  );
-}
-
 /** The sidebar of parts, by what they are: each dragged and dropped onto
  * the canvas (it does nothing clicked). A pool of engines' size is set here. */
 function Parts() {
@@ -267,18 +232,9 @@ function Parts() {
     {
       title: "Engines",
       items: [
-        { key: "prefill", label: "Prefill", hint: "canvas or a station", title: "A prefill engine: a queue with its device, engine and pools", tool: { kind: "node", part: { kind: "prefill" } } },
-        { key: "decode", label: "Decode", hint: "canvas or a station", title: "A decode engine: a queue with its device, engine and pools", tool: { kind: "node", part: { kind: "decode" } } },
+        { key: "engine", label: "Engine", hint: "canvas or a station", title: "An engine: a queue with its device, engine and pools; click it to make it a prefiller or a decoder", tool: { kind: "node", part: { kind: "engine" } } },
+        { key: "pool", label: "Engine pool", note: `×${n}`, hint: "canvas or a station", title: `A pool of ${n} engines, a call choosing one (llm-d's InferencePool); click it to make them prefillers or decoders`, tool: { kind: "node", part: { kind: "pool", count: n } } },
         { key: "delay", label: "Delay", hint: "canvas or a station", title: "A delay stage: a wait outside the engines", tool: { kind: "node", part: { kind: "delay" } } },
-      ],
-    },
-    {
-      title: "Pools",
-      items: [
-        { key: "prefill", label: "Prefill pool", note: `×${n}`, hint: "canvas or a station", title: `A pool of ${n} prefill engines, a call choosing one (llm-d's InferencePool)`, tool: { kind: "node", part: { kind: "pool", role: "prefill", count: n } } },
-        { key: "decode", label: "Decode pool", note: `×${n}`, hint: "canvas or a station", title: `A pool of ${n} decode engines, a call choosing one (llm-d's InferencePool)`, tool: { kind: "node", part: { kind: "pool", role: "decode", count: n } } },
-        { key: "blocks", label: "KV blocks", hint: "on an engine", title: "A memory pool of KV blocks on an engine's device (one a device)", tool: { kind: "memory", pool: "blocks" } },
-        { key: "slots", label: "Request slots", hint: "on an engine", title: "A memory pool of request slots on an engine", tool: { kind: "memory", pool: "slots" } },
       ],
       extra: (
         <label className="fparts-n">
@@ -287,14 +243,20 @@ function Parts() {
       ),
     },
     {
+      title: "Memory pools",
+      items: [
+        { key: "blocks", label: "KV blocks", hint: "on an engine", title: "A memory pool of KV blocks on an engine's device (one a device)", tool: { kind: "memory", pool: "blocks" } },
+        { key: "slots", label: "Request slots", hint: "on an engine", title: "A memory pool of request slots on an engine", tool: { kind: "memory", pool: "slots" } },
+      ],
+    },
+    {
       title: "Arrows",
       items: [{ key: "call", label: "Call", hint: "on a station, then click", title: "An arrow: the station dropped on calls the one clicked next", tool: { kind: "arrow", arrow: "call" } }],
     },
     {
       title: "KV transfer",
       items: [
-        { key: "pull", label: "KV pull", hint: "on the source, then click", title: "A KV copy over NIXL the reader pulls: drop on the source queue, click the reader", tool: { kind: "arrow", arrow: "pull" } },
-        { key: "push", label: "KV push", hint: "on the source, then click", title: "A KV copy over NIXL the source pushes: drop on the source queue, click the reader", tool: { kind: "arrow", arrow: "push" } },
+        { key: "kv", label: "KV transfer", hint: "on the source, then click", title: "A KV copy over NIXL, pulled by the reader: drop on the source queue, click the reader; click the arrow to make it a push", tool: { kind: "arrow", arrow: "kv" } },
       ],
     },
   ];
@@ -343,8 +305,10 @@ function InstanceNode({ data }: NodeProps<InstanceNodeT>) {
 const nodeTypes = { serq: SerqNode, instance: InstanceNode };
 
 /** An arrow along libavoid's route; until libavoid has loaded, React Flow's
- * own step path. serQ's words on it stand over its middle, a line each. */
-function RoutedEdge(p: EdgeProps<Edge<{ route?: Point[]; poster?: string; words?: string[] }>>) {
+ * own step path. serQ's words on it stand over its middle, a line each; a
+ * KV copy chosen has its mode on a toolbar under it. */
+function RoutedEdge(p: EdgeProps<Edge<{ route?: Point[]; poster?: string; words?: string[]; copy?: "pull" | "push" }>>) {
+  const host = useContext(Host)!;
   const r = p.data?.route;
   let path: string;
   let at: Point;
@@ -357,6 +321,9 @@ function RoutedEdge(p: EdgeProps<Edge<{ route?: Point[]; poster?: string; words?
     at = { x, y };
   }
   const words = p.data?.words;
+  const copy = p.data?.copy;
+  // the toolbar keeps its size as the canvas zooms, as a node's does
+  const zoom = useStore((s) => s.transform[2]);
   return (
     <>
       <BaseEdge id={p.id} path={path} markerEnd={p.markerEnd} style={p.style} interactionWidth={p.interactionWidth} />
@@ -369,6 +336,19 @@ function RoutedEdge(p: EdgeProps<Edge<{ route?: Point[]; poster?: string; words?
           </div>
         </EdgeLabelRenderer>
       ) : null}
+      {copy && p.selected && (
+        <EdgeLabelRenderer>
+          <div className="ftools fedge-tools nodrag nopan" style={{ transform: `translate(${at.x}px, ${at.y}px) scale(${1 / zoom}) translate(-50%, 10px)`, transformOrigin: "0 0" }}>
+            <span className="seg" role="group" aria-label="KV copy mode">
+              {(["pull", "push"] as const).map((m) => (
+                <button key={m} className={`k-${m}`} aria-pressed={copy === m} onClick={() => host.mode(p.source, p.target, m)} title={m === "pull" ? "The reader starts each read" : "The source posts each write"}>
+                  {m}
+                </button>
+              ))}
+            </span>
+          </div>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 }
@@ -428,7 +408,7 @@ function edgesOf(g: Graph): Edge[] {
       style: { stroke: colour, strokeWidth: copy ? 2 : 1.4, strokeDasharray: copy ? "6 4" : undefined },
       markerEnd: { type: MarkerType.ArrowClosed, color: colour, width: 16, height: 16 },
       // serQ's words on the arrow: a condition, an exit's, a copy's way and latency
-      data: { poster: e.poster, words: e.words?.length ? e.words : copy && e.copy ? [e.copy] : undefined },
+      data: { poster: e.poster, words: e.words?.length ? e.words : copy && e.copy ? [e.copy] : undefined, copy: e.copy },
     };
   });
 }
@@ -647,7 +627,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
     if (!wire) return;
     setWire(null);
     if (wire.arrow === "call") host.connect(wire.from, to);
-    else host.copy(wire.from, to, wire.arrow);
+    else host.copy(wire.from, to, "pull");
   };
 
   /** The tool being dragged, and the node under it that takes it. */
@@ -786,8 +766,9 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
 }
 
 /** Mount the Edit view in `el`. `show` gives it serQ's graph, now and after
- * every redraw; `surface` is what the replay draws over it with, once mounted. */
-export function mountEditView(el: HTMLElement, host: EditHost): { show(g: Graph): void; surface: Promise<ReplaySurface> } {
+ * every redraw; `surface` is what the replay draws over it with, once
+ * mounted; `rename` keeps a renamed draft where it was dropped. */
+export function mountEditView(el: HTMLElement, host: EditHost): { show(g: Graph): void; rename(from: string, to: string): void; surface: Promise<ReplaySurface> } {
   let setGraph: ((g: Graph) => void) | null = null;
   let pending: Graph | null = null;
   let ready!: (s: ReplaySurface) => void;
@@ -809,6 +790,12 @@ export function mountEditView(el: HTMLElement, host: EditHost): { show(g: Graph)
     show(g: Graph) {
       if (setGraph) setGraph(g);
       else pending = g;
+    },
+    rename(from: string, to: string) {
+      const at = dropped.get(from);
+      if (!at) return;
+      dropped.delete(from);
+      dropped.set(to, at);
     },
   };
 }
