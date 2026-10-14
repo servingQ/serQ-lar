@@ -47,6 +47,12 @@
           <button id="add-prefill" title="A prefill engine: a queue with its device, engine and pools">+ Prefill</button>
           <button id="add-decode" title="A decode engine: a queue with its device, engine and pools">+ Decode</button>
           <button id="add-delay" title="A delay stage: a wait outside the engines">+ Delay</button>
+          <button id="add-pool" title="A pool of engines: N instances of one queue, a call choosing one (llm-d's InferencePool)">+ Pool</button>
+          <form id="pool-form" class="pool-form" hidden>
+            <select name="role" aria-label="What the pool's engines do"><option value="decode">decode</option><option value="prefill">prefill</option></select>
+            <label>× <input name="count" type="number" min="1" max="64" value="2" aria-label="Instances" /></label>
+            <button>Add pool</button>
+          </form>
           <span id="say" class="say" aria-live="polite"></span>
         </div>
         <div id="drafts" class="drafts" hidden></div>

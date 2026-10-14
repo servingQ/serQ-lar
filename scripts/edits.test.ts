@@ -79,6 +79,23 @@ const queueDraft = (src: string, role: "prefill" | "decode", stem: string): Draf
   check("vllm: an engine nothing reaches", src, [{ at: [at, at], text: snip.decode("E") + "\n" }], { refused: /run by no statement/ });
 }
 
+// a pool of engines (a family, `queue D[3]`): placed by an arrow, its call chooses a member
+{
+  const pool = (src: string, role: "prefill" | "decode", stem: string, n: number): Draft => {
+    const name = fresh(src, stem);
+    return { kind: "queue", name, role, family: String(n), text: role === "prefill" ? snip.prefill(name, n) : snip.decode(name, n), relations: [] };
+  };
+  let src = example("vllm");
+  const e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: pool(src, "decode", "E", 3) });
+  check("vllm: arrival → a pool of 3 decoders", src, e, { stages: ["E", "vllm"], text: ["queue E[3] : decode", " in 3 by (work(E[", "].decode ("] });
+  if (typeof e !== "string") {
+    src = apply(src, e);
+    check("vllm: the pool grows to 4", src, resize(src, ol(src), "E", 1), { stages: ["E"], text: ["queue E[4] : decode"] });
+  }
+  const l = example("llmd_nixl_pull");
+  check("llmd: P → a pool of 2 prefillers", l, connect(l, ol(l), { kind: "station", stage: "P" }, { kind: "draft", draft: pool(l, "prefill", "Q", 2) }), { stages: ["Q", "P", "D"], text: ["queue Q[2] : prefill"] });
+}
+
 // llmd_nixl_pull.sq
 {
   const src = example("llmd_nixl_pull");
