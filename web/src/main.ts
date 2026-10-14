@@ -461,6 +461,17 @@ setMode("replay");
 $<HTMLButtonElement>("add-prefill").onclick = () => compose.add("prefill");
 $<HTMLButtonElement>("add-decode").onclick = () => compose.add("decode");
 $<HTMLButtonElement>("add-delay").onclick = () => compose.add("delay");
+const poolForm = $<HTMLFormElement>("pool-form");
+$<HTMLButtonElement>("add-pool").onclick = () => {
+  poolForm.hidden = !poolForm.hidden;
+  if (!poolForm.hidden) poolForm.querySelector("input")?.focus();
+};
+poolForm.onsubmit = (e) => {
+  e.preventDefault();
+  const data = new FormData(poolForm);
+  compose.addPool(data.get("role") === "prefill" ? "prefill" : "decode", Number(data.get("count")) || 2);
+  poolForm.hidden = true;
+};
 showMode();
 
 for (const n of names) select.add(new Option(n, n));

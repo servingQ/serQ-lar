@@ -102,8 +102,8 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[] }, drafts: D
   // drafts wait in a row under the figure until an arrow reaches them
   const below = Math.max(0, ...nodes.map((n) => n.y)) + ROW * 1.5;
   drafts.forEach((d, i) => {
-    const name = d.kind === "nic" ? `${d.queue}.nic` : d.name;
-    const sub = d.kind === "queue" ? `draft · ${d.role}` : d.kind === "stage" ? "draft · delay" : "draft · NIC: connect it to the reader";
+    const name = d.kind === "nic" ? `${d.queue}.nic` : d.kind === "queue" && d.family ? `${d.name}[${d.family}]` : d.name;
+    const sub = d.kind === "queue" ? (d.family ? `draft · pool of ${d.family} · ${d.role}` : `draft · ${d.role}`) : d.kind === "stage" ? "draft · delay" : "draft · NIC: connect it to the reader";
     nodes.push({ id: draftId(i), kind: "draft", label: name, sub, x: i * COL, y: below, draft: d });
   });
   return { nodes, edges };

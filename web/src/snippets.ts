@@ -3,10 +3,15 @@
 // and relation). The constants are placeholders to edit; serQ checks the
 // result like any other text.
 
+/** `NAME`, or `NAME[N]` for a pool of `N` instances (a family, as
+ * llmd_nixl_pull.sq's `queue P[NP]`): each member its own device, engine
+ * and pools, a call choosing one. */
+const head = (name: string, count?: number) => (count === undefined ? name : `${name}[${count}]`);
+
 /** A queue that prefills: device, engine, its request slots and KV, and the
  * entry that computes the prompt and leases the KV for a reader. */
-export function prefill(name: string): string {
-  return `queue ${name} : prefill {
+export function prefill(name: string, count?: number): string {
+  return `queue ${head(name, count)} : prefill {
   device gpu { compute (t) = t * 2e-5; hbm (k) = 2e-4 + 2e-9 * k; kv cap 160000; }
   engine on gpu {
     reqs cap 16;
@@ -26,8 +31,8 @@ export function prefill(name: string): string {
 
 /** A queue that decodes: device, engine, its request slots and KV, and the
  * entry that prefills locally and decodes the workload's hidden \`o\` tokens. */
-export function decode(name: string): string {
-  return `queue ${name} : decode {
+export function decode(name: string, count?: number): string {
+  return `queue ${head(name, count)} : decode {
   device gpu { compute (t) = t * 2e-5; hbm (k) = 2e-4 + 2e-9 * k; kv cap 160000; }
   engine on gpu {
     reqs cap 64;

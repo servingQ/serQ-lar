@@ -150,9 +150,10 @@ export class Editor {
   /** Edits from the figure, as one step to undo; the view scrolls to the first. */
   apply(edits: Edit[]) {
     const changes = [...edits].sort((a, b) => a.at[0] - b.at[0]).map((e) => ({ from: e.at[0], to: e.at[1], insert: e.text }));
-    const tr = this.view.state.update({ changes, userEvent: "input.figure" });
-    const first = changes.length ? tr.changes.mapPos(changes[0].from, 1) : 0;
-    this.view.dispatch(tr, { selection: { anchor: first }, scrollIntoView: true });
+    // one transaction: its selection is a position in the text after the changes
+    const set = this.view.state.changes(changes);
+    const first = changes.length ? set.mapPos(changes[0].from, 1) : 0;
+    this.view.dispatch({ changes: set, selection: { anchor: first }, scrollIntoView: true, userEvent: "input.figure" });
   }
 
   /** serQ's diagnostic (`LINE:COL: message` and a caret line), underlined where it points; `null` clears it. */

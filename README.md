@@ -42,7 +42,8 @@ figure about the pointer, a drag pans it, a double-click fits it; the
 replay zooms with it.
 
 The figure edits the text, too. + Prefill and + Decode make a draft
-engine; in Connect mode an arrow dragged from the arrival or a station to
+engine, + Pool a draft pool of N engines (`queue D[N]`, a call choosing
+one); in Connect mode an arrow dragged from the arrival or a station to
 it writes the queue and its call into the program. The Edit tab shows the
 same deployment as nodes to drag and wire (React Flow): serQ's stations
 and arrows, where serQ placed them, each with an input on its left and an

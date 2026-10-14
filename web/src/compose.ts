@@ -60,6 +60,20 @@ export class Compose {
     this.host.say(`Draft ${name}: drag an arrow from the arrival or a station to it (Connect mode, or a handle in the Edit view).`);
   }
 
+  /** A pool of `count` engines playing `role`, a family (`queue D[3]`): a
+   * draft like an engine; its call chooses a member (`choose k in 3 by
+   * (work(D[k]))`), and its inspector steps its size. */
+  addPool(role: "prefill" | "decode", count: number) {
+    const name = this.freshName(role === "prefill" ? "P" : "D");
+    const n = Math.max(1, Math.round(count));
+    const text = role === "prefill" ? snip.prefill(name, n) : snip.decode(name, n);
+    this.drafts.push({ kind: "queue", name, role, family: String(n), text, relations: [] });
+    this.renderTray();
+    this.connecting = true;
+    this.onMode();
+    this.host.say(`Draft ${name}[${n}], a pool of ${n} ${role} engines: drag an arrow from the arrival or a station to it.`);
+  }
+
   onMode: () => void = () => {};
 
   private freshName(stem: string): string {
@@ -73,7 +87,7 @@ export class Compose {
       const card = document.createElement("div");
       card.className = `draft ${d.kind}`;
       card.dataset.draft = String(i);
-      const what = d.kind === "queue" ? `queue · ${d.role}` : d.kind === "stage" ? "delay stage" : `${d.queue}'s NIC`;
+      const what = d.kind === "queue" ? (d.family ? `pool of ${d.family} · ${d.role}` : `queue · ${d.role}`) : d.kind === "stage" ? "delay stage" : `${d.queue}'s NIC`;
       const hint = d.kind === "nic" ? "drag to the queue that reads its KV" : "drop an arrow here";
       card.innerHTML = `<b>${d.kind === "nic" ? `${d.queue}.nic` : d.name}</b><span>${what}</span><small>${hint}</small><button class="x" title="Discard the draft" aria-label="Discard">×</button>`;
       this.tray.append(card);
@@ -269,7 +283,7 @@ export class Compose {
     }
     if (!q.members.some((m) => m.kind === "nic")) parts.push(`<button data-act="nic" title="A NIC for a KV copy out of this queue">+ NIC</button>`);
     parts.push(
-      `<form class="group pool"><input name="name" placeholder="pool name" size="8" aria-label="Pool name" required pattern="[A-Za-z_][A-Za-z0-9_]*"><select name="kind" aria-label="Pool kind"><option value="slots">request slots</option><option value="blocks">KV blocks</option></select><button>+ Pool</button></form>`,
+      `<form class="group pool"><input name="name" placeholder="pool name" size="8" aria-label="Pool name" required pattern="[A-Za-z_][A-Za-z0-9_]*"><select name="kind" aria-label="Pool kind"><option value="slots">request slots</option><option value="blocks">KV blocks</option></select><button title="A memory pool in this queue: request slots on its engine, or KV blocks on its device">+ Memory pool</button></form>`,
     );
     if (q.roles.some((r) => r === "prefill" || r === "decode")) parts.push(`<button data-act="dup" title="A draft copy of this queue, to place with an arrow">Duplicate</button>`);
     parts.push(`<button data-act="remove" class="danger">Remove</button>`);
@@ -332,7 +346,7 @@ export class Compose {
     const edits = addPool(this.host.text(), it.ol, it.q.name, snip.pool(name, on, kind));
     if (typeof edits === "string") return this.host.say(edits, true);
     this.host.apply(edits);
-    this.host.say(`pool ${name} on ${on}: written into ${it.q.name}. A pool shows in the figure once a hold takes it.`);
+    this.host.say(`Memory pool ${name} on ${on}: written into ${it.q.name}. It shows in the figure once a hold takes it.`);
   }
 }
 

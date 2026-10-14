@@ -45,7 +45,10 @@ See [upstream.md](upstream.md), U10.
    serQ refuses keeps the last figure, dimmed, under the diagnostic.
 2. **Zoom and pan.** Wheel or pinch about the pointer, drag to pan,
    double-click or Fit to fit. The replay's canvas follows (`camera.ts`).
-3. **Palette.** + Prefill, + Decode, + Delay: a draft.
+3. **Palette.** + Prefill, + Decode, + Delay: a draft. + Pool: a pool of
+   N engines (llm-d's InferencePool), a family `queue D[N]`; its call
+   chooses a member (`choose k in N by (work(D[k]))`), and its inspector
+   steps N.
 4. **The Edit view** (React Flow, the Edit tab). serQ's graph as nodes to
    drag and wire: the nodes and arrows are read off serQ's figure
    (`data-node`, `data-from`, `data-to`, `data-copy`), the kinds off the IR,
@@ -63,7 +66,7 @@ See [upstream.md](upstream.md), U10.
    source.
 6. **Inspector** (click a station or a copy). Instances −/+ (the family's
    `let`), pull ⇄ push (a push dispatches the source's call with `fork`,
-   which serQ requires), + NIC, + Pool, Duplicate (a draft copy, with the
+   which serQ requires), + NIC, + Memory pool (request slots or KV blocks in the queue), Duplicate (a draft copy, with the
    relations it reads by), Remove (the queue, its calls and its copies;
    serQ names whatever else still refers to it).
 
