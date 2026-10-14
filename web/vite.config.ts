@@ -2,20 +2,21 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { defineConfig } from "vite";
 
-// The serQ the page was built from, as a tag (with commits past it when the
-// checkout is ahead, as in local work against ../serQ's main). serq::VERSION
+// The serQ the page was built from, as a tag: the one Cargo.lock pins, or,
+// with SERQ_DIR set (local work, scripts/build-wasm.sh), that checkout's
+// `git describe` (with commits past the tag when it is ahead). serq::VERSION
 // is Cargo's version, which serQ's pre-release tags do not bump
-// (v0.1.6-alpha.3 says 0.1.5), so the page names the checkout instead.
+// (v0.1.6-alpha.3 says 0.1.5), so the page names the tag instead.
 // Stopgap: docs/upstream.md U11.
 function serqRef(): string {
-  try {
-    return execFileSync("git", ["describe", "--tags", "--always"], {
-      cwd: new URL("../../serQ", import.meta.url),
-      encoding: "utf8",
-    }).trim();
-  } catch {
-    return readFileSync(new URL("../SERQ_REF", import.meta.url), "utf8").trim();
+  const dir = process.env.SERQ_DIR;
+  if (dir) {
+    return execFileSync("git", ["describe", "--tags", "--always"], { cwd: dir, encoding: "utf8" }).trim();
   }
+  const lock = readFileSync(new URL("../Cargo.lock", import.meta.url), "utf8");
+  const tag = /name = "serq"\n[^[]*?source = "git\+[^"?]*\?tag=([^"#]+)#/.exec(lock)?.[1];
+  if (!tag) throw new Error("Cargo.lock pins no serq tag (crates/serq-wasm/Cargo.toml)");
+  return tag;
 }
 
 // `base: "./"` so the build works under any GitHub Pages path

@@ -3,7 +3,7 @@
 # A program that reads a trace file cannot run in the browser.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
-serq="${SERQ_DIR:-$root/../serQ}"
+serq="$("$root/scripts/serq-dir.sh")"
 out="$root/web/src/examples"
 mkdir -p "$out"
 for f in \

@@ -1,7 +1,7 @@
 # serq-lar
 
 A static web app that animates requests through serQ's deployment view.
-serQ (`../serQ`) is compiled to wasm and runs in the browser; there is no
+serQ (`servingQ/serQ`, a Cargo git dependency) is compiled to wasm and runs in the browser; there is no
 server, and the site must stay deployable to GitHub Pages.
 
 ## The rules
@@ -12,10 +12,14 @@ server, and the site must stay deployable to GitHub Pages.
   stopgap lives here, is marked as one, and the real change is written up in
   `docs/upstream.md` (as a serQ issue: Korean, Before/After, per serQ's
   CLAUDE.md).
-- **No fork of serQ.** `serq-wasm` depends on `../serQ` by path; CI checks
-  out `SERQ_REF`. Bump `SERQ_REF` in the change that needs the newer serQ.
-  `SERQ_REF` is a serQ tag (`v0.1.6-alpha.2`), never a commit sha: a change
-  that needs an untagged serQ waits for the tag, or asks for one.
+- **No fork of serQ.** `serq-wasm` depends on serQ by git tag
+  (`crates/serq-wasm/Cargo.toml`, `tag = "v0.1.6-alpha.4"`); `Cargo.lock`
+  pins its commit. Bump the tag, and the lock with it (`cargo metadata`),
+  in the change that needs the newer serQ. It is a serQ tag, never a
+  `rev`: a change that needs an untagged serQ waits for the tag, or asks
+  for one. `SERQ_DIR=<serQ checkout>` builds against local serQ work
+  (`scripts/build-wasm.sh` patches the dependency and keeps the lock);
+  set it for `npm run build` too, so the header names that checkout.
 - **The replay is serQ's log, whole or cut.** The page replays the log of
   the run it made (`run_logged`), never a made-up one; when the event cap
   cut the log short, the banner says so.

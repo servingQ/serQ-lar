@@ -8,5 +8,7 @@ out=scripts/.edits.test.mjs
 
 web/node_modules/.bin/esbuild scripts/edits.test.ts --bundle --platform=node --format=esm --log-level=warning \
   --outfile="$out"
+# serQ's own examples, from where the build took serQ (scripts/serq-dir.sh)
+export SERQ_DIR="$(scripts/serq-dir.sh)"
 # beside the test, so that its paths to the wasm and the examples hold
 node "$out"

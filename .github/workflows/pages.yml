@@ -18,18 +18,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # serQ comes in through Cargo: the tag crates/serq-wasm/Cargo.toml
+      # names, at the commit Cargo.lock pins
       - uses: actions/checkout@v4
         with:
           path: serq-lar
-      - name: Read SERQ_REF
-        id: ref
-        run: echo "sha=$(cat serq-lar/SERQ_REF)" >> "$GITHUB_OUTPUT"
-      # serq-wasm depends on serQ by path (../../../serQ from the crate)
-      - uses: actions/checkout@v4
-        with:
-          repository: servingQ/serQ
-          ref: ${{ steps.ref.outputs.sha }}
-          path: serQ
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: serq-lar
