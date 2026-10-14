@@ -172,10 +172,19 @@ without the page reading a program's meaning from its text:
   [#616](https://github.com/servingQ/serQ/issues/616),
   [#617](https://github.com/servingQ/serQ/pull/617). An engine, a `stage`
   or a NIC that no run uses linked, and the figure silently left it out;
-  now it is an error at its declaration. So every station in the figure
-  has an arrow in and one out, and the page keeps a palette's engine as a
-  draft until an arrow reaches it (`scripts/edits.test.ts`, "an engine
+  now it is an error at its declaration. The page keeps a palette's engine
+  as a draft until an arrow reaches it (`scripts/edits.test.ts`, "an engine
   nothing reaches").
+- **Every station has an arrow in and one out** — landed, serQ
+  [#624](https://github.com/servingQ/serQ/issues/624),
+  [#625](https://github.com/servingQ/serQ/pull/625), in v0.1.6-alpha.4.
+  Reaching a station was not enough for the figure: a copy whose NICs are
+  in no instance (`vllm_nixl_push.sq`) was a bracket with no arrow, so the
+  source's NIC had none out and the reader's none in. An arrow now goes
+  under the bracket, carrying the copy's mark, and serQ's
+  `tests/draw.rs` checks the arrows in and out of every station of every
+  example and tutorial figure. The Edit view reads those arrows, so every
+  engine and NIC there has a way in and a way out.
 - **A NIXL copy says who posts it** — landed, serQ
   [#618](https://github.com/servingQ/serQ/issues/618),
   [#619](https://github.com/servingQ/serQ/pull/619). `Run.poster` in the
