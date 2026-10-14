@@ -283,8 +283,8 @@ member wherever it stands, and the panel's words by their place (7 above
 its top left). The NIC rule is there because the figure of a push draws
 the bracket of both NICs inside the decoder's panel: with
 `examples/pd-disaggregation/vllm_nixl_push.sq` made two instances (`P[1]`,
-`D[1]`), `P.nic` stands in `decode instance D[m]`.
-Issue draft:
+`D[1]`), `P.nic` stands in `decode instance D[m]`. serQ
+[#632](https://github.com/servingQ/serQ/issues/632). Issue draft:
 
 > **배포 그림의 instance 패널이 자기 노드를 SVG에 적기**
 >

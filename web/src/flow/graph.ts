@@ -172,8 +172,8 @@ function poolsOf(svg: SVGSVGElement, pools: IrPool[], nodes: GraphNode[]) {
  * Stopgap: the panel names no nodes, so a node is a member when its centre
  * is inside the panel; a queue's NIC (`P.nic`), indexed with its queue, is a
  * member of its queue's panel wherever serQ draws it (a push's bracket of
- * both NICs stands inside the decoder's panel). docs/upstream.md U15 asks
- * serQ for `data-nodes` on the panel, as a bracket has. */
+ * both NICs stands inside the decoder's panel). docs/upstream.md U15 (serQ
+ * #632) asks for `data-nodes` on the panel, as a bracket has. */
 function instancesOf(svg: SVGSVGElement, nodes: GraphNode[]): GraphInstance[] {
   const texts = [...svg.querySelectorAll<SVGTextElement>("text")].filter((t) => !t.closest("g[data-node], g[data-pool]"));
   const panels = [...svg.querySelectorAll<SVGRectElement>("rect.instance")].map((r) => r.getBBox());
