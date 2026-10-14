@@ -21,9 +21,14 @@ mirrors the shape, `web/src/player.ts` plays it. The synthetic trace is gone.
 serQ [#603](https://github.com/servingQ/serQ/issues/603),
 [#604](https://github.com/servingQ/serQ/pull/604): the SVG groups each
 station's shapes under `<g data-stage="P">`, a queue glyph and a drum under
-`<g data-pool="P.reqs">`, and marks the arrival and exit arrows and the
-engine's budget bar with `data-role`. `web/src/anchors.ts` reads them; the
-label-matching heuristic is gone.
+`<g data-pool="P.reqs" data-role="queue|drum">`, and marks the arrival and
+exit arrows and the engine's budget bar with `data-role`. Then
+[#606](https://github.com/servingQ/serQ/issues/606),
+[#607](https://github.com/servingQ/serQ/pull/607): every arrow names the
+nodes it joins (`data-from`, `data-to`; a decision is `#0`), so the page
+walks a session along the arrows from one station to the next, through
+the router's decision, and out and in again for a new turn.
+`web/src/anchors.ts` reads them; the label-matching heuristic is gone.
 
 The question of whether to keep using serQ's SVG was settled there too: a
 figure-as-JSON that the page draws itself (U5) would re-implement serQ's

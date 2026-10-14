@@ -5,6 +5,13 @@
 // forward pass an engine is running, and the engine's budget bar fills
 // with that pass's tokens. A session on a stage the figure does not draw
 // (the workload's tool) parks, dimmed, past the exit.
+//
+// Between stations a session travels along the figure's arrows (serQ names
+// each arrow's ends), at a pace of its own: a hop takes a fraction of a
+// wall-clock second whatever the playback speed, since in the simulation
+// it takes no time. When nothing is in any station, time can skip to the
+// next event (`skipIdle`): a tool call of seconds passes in a blink, an
+// iteration of milliseconds plays at the chosen speed.
 
 import type { Anchors, Box, Point } from "./anchors";
 import { label, who, whoOf, type Log, type LogEvent, type Named } from "./events";
@@ -18,8 +25,21 @@ type Where =
   | { kind: "held"; pool: number; seq: number }
   | { kind: "run"; stages: number[]; mode: Mode; since: number; until: number }
   | { kind: "ready"; stage: number }
-  /** Ended, leaving by the exit from `from` (the stage it was last on). */
+  /** Ended, leaving by the exit from `from` (the node it was last at). */
   | { kind: "gone"; from?: string };
+
+/** A way along the figure's arrows: points, and the indices after which the
+ * session is carried rather than drawn moving (out by an exit, in again by
+ * the arrival: a new turn). */
+interface Path {
+  pts: Point[];
+  jumps: Set<number>;
+  /** Cumulative length at each point. */
+  at: number[];
+  len: number;
+  /** Length travelled so far. */
+  pos: number;
+}
 
 export interface Mover {
   key: string;
@@ -27,7 +47,15 @@ export interface Mover {
   leg?: number;
   turn: number;
   where: Where;
-  /** Drawn position, eased toward the target each frame. */
+  /** The figure node (a station, or a decision `#k`) it was last placed at. */
+  node?: string;
+  /** The pool it waits at or was admitted at, while its hold's work (a KV
+   * transfer over the NICs) runs elsewhere: it stays, the work moves. */
+  heldAt?: number;
+  /** At the workload (a tool), not in the deployment: parked past the exit. */
+  away: boolean;
+  path: Path | null;
+  /** Drawn position, eased toward the target each frame unless on a path. */
   x: number;
   y: number;
   alpha: number;
@@ -55,6 +83,8 @@ export interface Hit {
 
 const R = 3.2; // circle radius, in figure points
 const GAP = 8.5;
+/** Wall-clock seconds a hop along the arrows takes. */
+const HOP = 0.5;
 
 function css(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -62,12 +92,16 @@ function css(name: string): string {
 
 export class Player {
   t = 0;
-  /** Simulated seconds per wall-clock second. */
+  /** Simulated seconds per wall-clock second, while something is happening. */
   speed = 1;
+  /** Jump to the next event when no session is in any station or queue. */
+  skipIdle = true;
   playing = false;
   onTick: (t: number) => void = () => {};
   /** A session the viewer clicked: drawn larger, its tooltip kept. */
   pinned: string | null = null;
+  /** Whether the last frame skipped idle time. */
+  skipping = false;
 
   private next = 0; // index of the first event not yet applied
   private movers = new Map<string, Mover>();
@@ -122,6 +156,24 @@ export class Player {
     this.apply(true);
   }
 
+  /** Pause and move to the next event (or the one after a tie at this instant). */
+  step() {
+    this.playing = false;
+    const ev = this.log.events;
+    let i = this.next;
+    while (i < ev.length && ev[i].t <= this.t) i++;
+    if (i < ev.length) {
+      this.t = ev[i].t;
+      this.apply(false);
+    }
+  }
+
+  /** The time of the next event not yet applied. */
+  nextEventTime(): number {
+    const e = this.log.events[this.next];
+    return e ? e.t : this.horizon;
+  }
+
   counts() {
     let queue = 0;
     let resident = 0;
@@ -133,8 +185,9 @@ export class Player {
           queue++;
           break;
         case "run":
-          if (this.stationOf(m.where.stages[0])) resident++;
-          else away++;
+          if (m.away) away++;
+          else if (m.heldAt !== undefined) queue++;
+          else resident++;
           break;
         case "ready":
           resident++;
@@ -142,6 +195,19 @@ export class Player {
       }
     }
     return { queue, resident, away };
+  }
+
+  /** Whether anything is happening in the figure: a session in a station or
+   * a queue, travelling along an arrow, or an iteration under way. */
+  busy(): boolean {
+    for (const m of this.movers.values()) {
+      if (m.path) return true;
+      const w = m.where;
+      if (w.kind === "queue" || w.kind === "held" || w.kind === "ready") return true;
+      if (w.kind === "run" && !m.away) return true;
+    }
+    for (const [stage, it] of this.iters) if (this.t <= it.t + it.dur && this.stationOf(stage)) return true;
+    return false;
   }
 
   /** The session under the figure point `(x, y)`, if any. */
@@ -203,7 +269,7 @@ export class Player {
       let m = this.movers.get(key);
       if (!m) {
         const src = this.source();
-        m = { key, s: e.s, leg: e.leg, turn: 0, where: { kind: "source" }, x: src.x, y: src.y, alpha: 1, flashed: 0, preemptions: 0, arrived: e.t };
+        m = { key, s: e.s, leg: e.leg, turn: 0, where: { kind: "source" }, away: false, path: null, x: src.x, y: src.y, alpha: 1, flashed: 0, preemptions: 0, arrived: e.t };
         this.movers.set(key, m);
       }
       switch (e.ev) {
@@ -215,13 +281,33 @@ export class Player {
           break;
         case "wait":
           m.where = { kind: "queue", pool: e.pool, seq: this.seq++ };
+          m.heldAt = e.pool;
+          m.away = false;
+          if (!snap) this.travel(m, this.poolStage.get(e.pool));
           break;
         case "admit":
           m.where = { kind: "held", pool: e.pool, seq: m.where.kind === "queue" ? m.where.seq : this.seq++ };
+          m.heldAt = e.pool;
           break;
-        case "run":
+        case "run": {
+          const held = m.where.kind === "queue" || m.where.kind === "held";
           m.where = { kind: "run", stages: e.stages, mode: e.mode ?? "plain", since: e.t, until: this.until.get(i) ?? this.horizon };
+          const drawn = e.stages.filter((k) => this.stationOf(k));
+          if (drawn.length === 1) {
+            // into a station
+            m.heldAt = undefined;
+            m.away = false;
+            if (!snap) this.travel(m, this.stageName[drawn[0]]);
+          } else if (drawn.length === 0 && !held) {
+            // at the workload: out of the deployment until something takes it in
+            m.away = true;
+            m.heldAt = undefined;
+            if (!snap) this.travel(m, undefined, true);
+          }
+          // else: its hold's work runs elsewhere (a transfer, a link's
+          // latency) while it stays where it was admitted
           break;
+        }
         case "done":
           m.where = { kind: "ready", stage: e.stage };
           break;
@@ -232,9 +318,9 @@ export class Player {
           break;
         case "refuse":
         case "end": {
-          const w = m.where;
-          const from = w.kind === "ready" ? this.stageName[w.stage] : w.kind === "run" ? this.stageName[w.stages[0]] : undefined;
+          const from = m.node;
           m.where = { kind: "gone", from };
+          if (!snap) this.travel(m, undefined, true);
           break;
         }
       }
@@ -245,42 +331,159 @@ export class Player {
       for (const [k, m] of this.movers) {
         const p = targets.get(k);
         if (p) Object.assign(m, p);
+        m.path = null;
+        m.node = this.nodeOf(m);
         m.alpha = m.where.kind === "gone" ? 0 : 1;
       }
     }
+  }
+
+  /** The figure node a session's state puts it at, if drawn. */
+  private nodeOf(m: Mover): string | undefined {
+    const w = m.where;
+    if (w.kind === "queue" || w.kind === "held") return this.poolStage.get(w.pool);
+    if (w.kind === "run") {
+      const k = w.stages.find((k) => this.stationOf(k));
+      return k === undefined ? undefined : this.stageName[k];
+    }
+    if (w.kind === "ready") return this.at.stations.has(this.stageName[w.stage]) ? this.stageName[w.stage] : undefined;
+    return undefined;
+  }
+
+  /** Send `m` along the arrows to node `to` (a station), or out (`leaving`:
+   * by the exit from where it is). Where no arrows join the two, out by the
+   * exit and in again by the arrival, as a new turn comes. */
+  private travel(m: Mover, to: string | undefined, leaving = false) {
+    const from = m.node;
+    if (to !== undefined && !this.at.stations.has(to)) to = undefined;
+    if (to === undefined && !leaving) return;
+    if (to !== undefined && to === from) return;
+    const segs: { pts: Point[]; jump?: boolean }[] = [];
+    if (to === undefined) {
+      const ex = this.exitFrom(from);
+      if (ex) segs.push({ pts: ex });
+    } else {
+      const direct = from === undefined ? this.arrivalTo(to) : this.route(from, to);
+      if (direct) segs.push(...direct);
+      else {
+        const ex = this.exitFrom(from);
+        if (ex) segs.push({ pts: ex });
+        const inAgain = this.arrivalTo(to);
+        if (inAgain) {
+          inAgain[0].jump = true;
+          segs.push(...inAgain);
+        }
+      }
+    }
+    if (to !== undefined) m.node = to;
+    else if (leaving) m.node = undefined;
+    if (!segs.length) return;
+    // from where it is drawn now, then the arrows
+    const pts: Point[] = [{ x: m.x, y: m.y }];
+    const jumps = new Set<number>();
+    for (const s of segs) {
+      if (s.jump) jumps.add(pts.length - 1);
+      pts.push(...s.pts);
+    }
+    const at = [0];
+    for (let i = 1; i < pts.length; i++) {
+      const d = jumps.has(i - 1) ? 0 : Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+      at.push(at[i - 1] + d);
+    }
+    m.path = { pts, jumps, at, len: at[at.length - 1], pos: 0 };
+  }
+
+  /** The arrival arrow, then the arrows from the node it reaches to `to`. */
+  private arrivalTo(to: string): { pts: Point[]; jump?: boolean }[] | null {
+    const a = this.at.arrival;
+    if (!a.pts.length) return null;
+    if (a.to === to || a.to === undefined) return [{ pts: a.pts }];
+    const rest = this.route(a.to, to);
+    return rest ? [{ pts: a.pts }, ...rest] : [{ pts: a.pts }];
+  }
+
+  /** The exit arrow from node `from`, else the last exit arrow. */
+  private exitFrom(from: string | undefined): Point[] | null {
+    const exits = this.at.exits;
+    const e = (from !== undefined && exits.find((x) => x.from === from)) || exits[exits.length - 1];
+    return e && e.pts.length ? e.pts : null;
+  }
+
+  /** The arrows from node `from` to node `to`, the fewest hops, through decisions. */
+  private route(from: string, to: string): { pts: Point[] }[] | null {
+    const prev = new Map<string, { from: string; pts: Point[] }>();
+    const queue = [from];
+    const seen = new Set([from]);
+    while (queue.length) {
+      const n = queue.shift()!;
+      for (const f of this.at.flows.get(n) ?? []) {
+        if (seen.has(f.to)) continue;
+        seen.add(f.to);
+        prev.set(f.to, { from: n, pts: f.pts });
+        if (f.to === to) {
+          const segs: { pts: Point[] }[] = [];
+          for (let x = to; x !== from; ) {
+            const p = prev.get(x)!;
+            segs.unshift({ pts: p.pts });
+            x = p.from;
+          }
+          return segs;
+        }
+        queue.push(f.to);
+      }
+    }
+    return null;
   }
 
   private stationOf(stage: number): Box | undefined {
     return this.at.stations.get(this.stageName[stage]);
   }
 
+  /** The point a run over `drawn` stages (two or more) has reached between
+   * the first's and the last's centres, by its progress in time. */
+  private along(drawn: number[], since: number, until: number): Point {
+    const a = this.stationOf(drawn[0])!;
+    const b = this.stationOf(drawn[drawn.length - 1])!;
+    const p = Math.min(1, Math.max(0, (this.t - since) / Math.max(1e-9, until - since)));
+    return { x: a.x + a.w / 2 + (b.x + b.w / 2 - a.x - a.w / 2) * p, y: a.y + a.h / 2 + (b.y + b.h / 2 - a.y - a.h / 2) * p };
+  }
+
+  /** The work of a session's hold moving elsewhere (its KV over the NICs):
+   * where it is now, if drawn. */
+  private packet(m: Mover): Point | null {
+    const w = m.where;
+    if (w.kind !== "run" || m.heldAt === undefined) return null;
+    const drawn = w.stages.filter((k) => this.stationOf(k));
+    if (drawn.length < 2) return null;
+    return this.along(drawn, w.since, w.until);
+  }
+
   /** Where new sessions come from: the start of the arrival arrow. */
   private source(): Point {
-    const a = this.at.arrival[0];
+    const a = this.at.arrival.pts[0];
     if (a) return { x: a.x + 4, y: a.y };
     const first = [...this.at.stations.values()][0];
     return { x: 10, y: first ? first.y + first.h / 2 : this.at.height / 2 };
   }
 
-  /** Where an ended session goes: the end of the exit arrow from the stage
-   * it was last on, else the last exit arrow. */
+  /** Where an ended session goes: the end of the exit arrow from the node
+   * it was last at, else the last exit arrow. */
   private sink(from?: string): Point {
-    const exits = this.at.exits;
-    const e = (from && exits.find((x) => x.from === from)) || exits[exits.length - 1];
-    if (e && e.pts.length) return e.pts[e.pts.length - 1];
+    const e = this.exitFrom(from);
+    if (e) return e[e.length - 1];
     return { x: this.at.width - 10, y: this.at.height / 2 };
   }
 
   /** The entrance a pool's queue is drawn at: its queue glyph, else its stage's left edge, else its drum. */
-  private entrance(pool: number): { x: number; y: number; lane: boolean } {
+  private entrance(pool: number): Point {
     const a = this.at.pools.get(this.poolName[pool]);
-    if (a?.queue) return { x: a.queue.x + a.queue.w - 4, y: a.queue.y + a.queue.h / 2, lane: true };
+    if (a?.queue) return { x: a.queue.x + a.queue.w - 4, y: a.queue.y + a.queue.h / 2 };
     const st = this.poolStage.get(pool);
     const box = st ? this.at.stations.get(st) : undefined;
-    if (box) return { x: box.x - 8, y: box.y + box.h / 2, lane: true };
-    if (a) return { x: a.drum.x - 6, y: a.drum.y + a.drum.h / 2, lane: true };
+    if (box) return { x: box.x - 8, y: box.y + box.h / 2 };
+    if (a) return { x: a.drum.x - 6, y: a.drum.y + a.drum.h / 2 };
     const s = this.source();
-    return { x: s.x + 20, y: s.y, lane: true };
+    return { x: s.x + 20, y: s.y };
   }
 
   /** Each live session's target position. */
@@ -296,27 +499,34 @@ export class Player {
         q.push(m);
         queued.set(w.pool, q);
       } else if (w.kind === "run") {
-        const first = this.stageName[w.stages[0]];
         const drawn = w.stages.filter((k) => this.stationOf(k));
-        if (drawn.length >= 2) {
+        if (m.heldAt !== undefined) {
+          // its hold's work runs elsewhere: it stays at the pool (the work is
+          // drawn moving, `packet`)
+          const q = queued.get(m.heldAt) ?? [];
+          q.push(m);
+          queued.set(m.heldAt, q);
+        } else if (drawn.length >= 2) {
           // a flow over two stations: along the line between them, by progress
-          const a = this.stationOf(drawn[0])!;
-          const b = this.stationOf(drawn[drawn.length - 1])!;
-          const p = Math.min(1, Math.max(0, (this.t - w.since) / Math.max(1e-9, w.until - w.since)));
-          out.set(m.key, { x: a.x + a.w / 2 + (b.x + b.w / 2 - a.x - a.w / 2) * p, y: a.y + a.h / 2 + (b.y + b.h / 2 - a.y - a.h / 2) * p });
+          out.set(m.key, this.along(drawn, w.since, w.until));
         } else if (drawn.length === 1) {
           const name = this.stageName[drawn[0]];
           const r = resident.get(name) ?? [];
           r.push(m);
           resident.set(name, r);
-        } else if (this.at.stations.has(first)) {
-          // unreachable: kept for the type
+        } else if (m.away) away.push(m);
+        else if (m.node && this.at.stations.has(m.node)) {
+          const r = resident.get(m.node) ?? [];
+          r.push(m);
+          resident.set(m.node, r);
         } else away.push(m);
       } else if (w.kind === "ready") {
         const name = this.stageName[w.stage];
-        const r = resident.get(name) ?? [];
-        r.push(m);
-        resident.set(name, r);
+        if (this.at.stations.has(name)) {
+          const r = resident.get(name) ?? [];
+          r.push(m);
+          resident.set(name, r);
+        } else away.push(m);
       } else if (w.kind === "gone") {
         out.set(m.key, this.sink(w.from));
       }
@@ -341,8 +551,16 @@ export class Player {
     if (!this.alive) return;
     const dt = Math.min(0.1, (now - (this.last || now)) / 1000);
     this.last = now;
+    this.skipping = false;
     if (this.playing) {
-      this.t = Math.min(this.horizon, this.t + dt * this.speed);
+      let advance = dt * this.speed;
+      if (this.skipIdle && !this.busy()) {
+        // nothing to see: hurry to the next event, and no further
+        this.skipping = true;
+        const gap = this.nextEventTime() - this.t;
+        advance = Math.min(gap, Math.max(advance * 64, dt * 8));
+      }
+      this.t = Math.min(this.horizon, this.t + Math.max(0, advance));
       if (this.t >= this.horizon) this.playing = false;
       this.apply(false);
       this.onTick(this.t);
@@ -350,6 +568,15 @@ export class Player {
     const targets = this.targets();
     const ease = 1 - Math.exp(-dt * 12);
     for (const [k, m] of this.movers) {
+      if (m.path) {
+        const p = m.path;
+        p.pos += (dt * p.len) / HOP;
+        const q = pointAt(p, Math.min(p.pos, p.len));
+        m.x = q.x;
+        m.y = q.y;
+        if (p.pos >= p.len) m.path = null;
+        continue;
+      }
       const p = targets.get(k);
       if (p) {
         m.x += (p.x - m.x) * ease;
@@ -409,11 +636,11 @@ export class Player {
       const w = m.where;
       let name: string | undefined;
       let waiting = false;
-      if (w.kind === "run" || w.kind === "ready") name = this.stageName[w.kind === "run" ? w.stages[0] : w.stage];
-      else if (w.kind === "queue" || w.kind === "held") {
-        name = this.poolStage.get(w.pool);
+      if (m.heldAt !== undefined && w.kind !== "gone") {
+        name = this.poolStage.get(m.heldAt);
         waiting = true;
-      }
+      } else if (w.kind === "run" && !m.away) name = this.nodeOf(m) ?? m.node;
+      else if (w.kind === "ready") name = this.nodeOf(m);
       if (!name || !at.stations.has(name)) continue;
       const c = occupied.get(name) ?? { waiting: 0, running: 0 };
       if (waiting) c.waiting++;
@@ -444,14 +671,35 @@ export class Player {
       ctx.fillText(`${away} at a tool`, s.x + 12, s.y + 8);
     }
 
+    // a hold's work on the move: a small square along the arrow, its session's colour
+    for (const m of this.movers.values()) {
+      const p = this.packet(m);
+      if (!p) continue;
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = colours.plain;
+      ctx.fillRect(p.x - 2.2, p.y - 2.2, 4.4, 4.4);
+      ctx.strokeStyle = ink;
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(p.x - 2.2, p.y - 2.2, 4.4, 4.4);
+    }
+    ctx.globalAlpha = 1;
+
     for (const m of this.movers.values()) {
       const w = m.where;
       const mode: Mode = w.kind === "run" ? w.mode : "plain";
       const colour = w.kind === "run" || w.kind === "ready" ? colours[mode] : colours.prefill;
       const pinned = m.key === this.pinned;
       const r = pinned ? R + 1.5 : R;
-      const awayNow = w.kind === "run" && !this.stationOf(w.stages[0]) && !w.stages.some((k) => this.stationOf(k));
-      ctx.globalAlpha = Math.max(0, m.alpha) * (awayNow ? 0.35 : 1);
+      const awayNow = !m.path && m.away;
+      // out by an exit and in again: faint around the jump
+      let carried = 1;
+      if (m.path) {
+        for (const j of m.path.jumps) {
+          const d = Math.abs(m.path.pos - m.path.at[j]);
+          carried = Math.min(carried, Math.min(1, d / 40));
+        }
+      }
+      ctx.globalAlpha = Math.max(0, m.alpha) * (awayNow ? 0.35 : 1) * (0.2 + 0.8 * carried);
       ctx.beginPath();
       ctx.arc(m.x, m.y, r, 0, Math.PI * 2);
       if (w.kind === "queue" || w.kind === "source") {
@@ -461,7 +709,7 @@ export class Player {
       } else {
         ctx.fillStyle = colour;
         ctx.fill();
-        if (w.kind === "run") {
+        if (w.kind === "run" && !m.path) {
           const it = this.iters.get(w.stages[0]);
           if (it && it.reqs.has(m.key) && this.t <= it.t + it.dur) {
             ctx.beginPath();
@@ -493,6 +741,16 @@ export class Player {
     }
     ctx.globalAlpha = 1;
   }
+}
+
+/** The point `d` along a path. */
+function pointAt(p: Path, d: number): Point {
+  const { pts, at } = p;
+  let i = 1;
+  while (i < at.length - 1 && at[i] < d) i++;
+  const span = at[i] - at[i - 1];
+  const f = span > 0 ? Math.min(1, Math.max(0, (d - at[i - 1]) / span)) : 1;
+  return { x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * f, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * f };
 }
 
 function seqOf(m: Mover): number {

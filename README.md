@@ -10,10 +10,17 @@ waits in a pool's queue, filled once admitted; **orange** in a prefill,
 **blue** in a decode, **grey** on any other stage (a NIC transfer, a tool); a
 green ring while the forward pass an engine is running covers it, and the
 engine's budget bar fills with that pass's tokens. A red ring flashes at a
-preemption. Hover a session for its story, click to follow it. The report of
-the same run is under the figure, a table a section with the unit in each
-header; click a station or a drum (or its chip) to read one component's part
-of it, field by field.
+preemption; a small square moving along the link is a hold's work (the KV
+pulled over the NICs) while its session waits. Between stations a session
+follows the figure's arrows, at a pace of its own: a hop takes half a
+second whatever the playback speed, since in the simulation it takes none.
+When no session is in any station or queue the clock skips to the next
+event ("skip idle time"), so a tool call of seconds passes in a blink and an
+iteration of milliseconds plays at the chosen speed; "Next event" steps.
+Hover a session for its story, click to follow it. The report of the same
+run is under the figure, a table a section with the unit in each header;
+click a station or a drum (or its chip) to read one component's part of
+it, field by field.
 
 The figure, the IR, the report and the log are serQ's; the page adds only the
 replay. It deploys to GitHub Pages.

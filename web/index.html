@@ -35,16 +35,18 @@
         <div id="view" class="view"><canvas id="overlay"></canvas><div id="tip" class="tip" hidden></div></div>
         <div class="controls">
           <button id="play">Play</button>
+          <button id="step" title="Pause and go to the next event">Next event</button>
           <input id="scrub" type="range" min="0" max="30" step="0.001" value="0" aria-label="Time" />
-          <select id="speed" aria-label="Speed">
+          <select id="speed" aria-label="Speed while something is happening">
+            <option value="0.02">0.02×</option>
             <option value="0.05">0.05×</option>
-            <option value="0.1">0.1×</option>
-            <option value="0.25" selected>0.25×</option>
+            <option value="0.1" selected>0.1×</option>
+            <option value="0.25">0.25×</option>
             <option value="1">1×</option>
             <option value="4">4×</option>
-            <option value="16">16×</option>
           </select>
-          <span id="clock" class="mono">t = 0.00 s</span>
+          <label class="dim" title="When no session is in any station or queue, jump to the next event"><input id="skip" type="checkbox" checked /> skip idle time</label>
+          <span id="clock" class="mono">t = 0.000 s</span>
           <span id="counts" class="mono dim"></span>
         </div>
         <ul class="legend">
@@ -55,7 +57,8 @@
           <li><i class="dot halo"></i>in the forward pass running now</li>
           <li><i class="bar"></i>the pass's progress; the budget bar is its tokens</li>
           <li><i class="dot flash"></i>preempted</li>
-          <li class="hint">hover a session for its story, click to follow it; click a station or a drum for its numbers</li>
+          <li><i class="packet"></i>a hold's work on the move (KV over the NICs)</li>
+          <li class="hint">hover a session for its story, click to follow it; click a station or a drum for its numbers. Between stations a session follows the arrows at its own pace; the speed is the simulation's while something is in a station.</li>
         </ul>
         <div class="dim mono" id="status"></div>
         <div id="report" class="report" aria-live="polite"></div>

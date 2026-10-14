@@ -27,10 +27,14 @@ export interface Anchors {
   height: number;
   stations: Map<string, Box>;
   pools: Map<string, PoolAnchor>;
-  /** The arrival arrow's points, where sessions come from. */
-  arrival: Point[];
-  /** The exit arrows: where sessions go, each from the stage it leaves (none from a decision). */
+  /** The arrival arrow: where sessions come from, and the node it reaches. */
+  arrival: { to?: string; pts: Point[] };
+  /** The exit arrows: where sessions go, each from the node it leaves. */
   exits: { from?: string; pts: Point[] }[];
+  /** The arrows between nodes, by the node they leave: the next station, a
+   * loop's return, a transfer between two NICs. A decision or a tick is a
+   * node without a stage, named `#k` by serQ. */
+  flows: Map<string, { to: string; pts: Point[] }[]>;
   /** The used part of each engine's budget bar, and its full width. */
   budgets: Map<string, { rect: SVGRectElement; full: number }>;
 }
@@ -72,10 +76,17 @@ export function anchors(svg: SVGSVGElement): Anchors {
     pools.set(pool, a);
   }
   const arrivalPath = svg.querySelector<SVGPathElement>('path[data-role="arrival"]');
-  const arrival = arrivalPath ? points(arrivalPath) : [];
+  const arrival = arrivalPath ? { to: arrivalPath.dataset.to, pts: points(arrivalPath) } : { pts: [] };
   const exits = [...svg.querySelectorAll<SVGPathElement>('path[data-role="exit"]')].map((p) => ({
     from: p.dataset.from,
     pts: points(p),
   }));
-  return { width: vb.width, height: vb.height, stations, pools, arrival, exits, budgets };
+  const flows = new Map<string, { to: string; pts: Point[] }[]>();
+  for (const p of svg.querySelectorAll<SVGPathElement>('path[data-role="flow"]')) {
+    const from = p.dataset.from!;
+    const list = flows.get(from) ?? [];
+    list.push({ to: p.dataset.to!, pts: points(p) });
+    flows.set(from, list);
+  }
+  return { width: vb.width, height: vb.height, stations, pools, arrival, exits, flows, budgets };
 }

@@ -21,6 +21,8 @@ const canvas = $<HTMLCanvasElement>("overlay");
 const tip = $<HTMLDivElement>("tip");
 const status = $<HTMLSpanElement>("status");
 const play = $<HTMLButtonElement>("play");
+const step = $<HTMLButtonElement>("step");
+const skip = $<HTMLInputElement>("skip");
 const scrub = $<HTMLInputElement>("scrub");
 const speed = $<HTMLSelectElement>("speed");
 const horizon = $<HTMLSelectElement>("horizon");
@@ -103,6 +105,7 @@ async function drawAndRun() {
   scrub.max = String(H);
   scrub.value = "0";
   player.speed = Number(speed.value);
+  player.skipIdle = skip.checked;
   player.onTick = tick;
   player.playing = true;
   play.textContent = "Pause";
@@ -126,9 +129,9 @@ function poolStages(ir: { pools: { admit_via?: number | null }[]; stages: { name
 function tick(t: number) {
   if (!player) return;
   scrub.value = String(t);
-  clock.textContent = `t = ${t.toFixed(2)} s`;
+  clock.textContent = `t = ${t.toFixed(3)} s` + (player.skipping ? " ▸▸" : "");
   const c = player.counts();
-  counts.textContent = `${c.queue} waiting · ${c.resident} in a station` + (c.away ? ` · ${c.away} away` : "");
+  counts.textContent = `${c.queue} waiting · ${c.resident} in a station` + (c.away ? ` · ${c.away} at a tool` : "");
   if (!player.playing) play.textContent = "Play";
 }
 
@@ -232,6 +235,14 @@ scrub.oninput = () => {
 };
 speed.onchange = () => {
   if (player) player.speed = Number(speed.value);
+};
+skip.onchange = () => {
+  if (player) player.skipIdle = skip.checked;
+};
+step.onclick = () => {
+  if (!player) return;
+  player.step();
+  tick(player.t);
 };
 serq({ cmd: "version" }).then((r) => {
   if (r.ok) $<HTMLSpanElement>("version").textContent = `serQ ${r.value} · wasm`;
