@@ -265,8 +265,9 @@ function needUses(src: string, ol: Outline): Edit[] {
 
 /** The KV copy from queue `source` to queue `reader` over NIXL: the
  * relation, a NIC on each side, the reader's entry `from` the source, and
- * the reader's call `from` the source's member; a push, the source's call
- * a leg of its own (`legs`). */
+ * the reader's call `from` the source's member. A push is dispatched in
+ * order, the source's call before the reader's (serQ #660): no `fork`,
+ * whose `join` serQ draws as an arrow from the caller into the reader's NIC. */
 export function copy(src: string, ol: Outline, source: string, reader: string, mode: "pull" | "push"): Edit[] | string {
   const S = ol.queues.find((q) => q.name === source);
   const R = ol.queues.find((q) => q.name === reader);
@@ -305,7 +306,6 @@ export function copy(src: string, ol: Outline, source: string, reader: string, m
     const semi = src.lastIndexOf(";", c.range[1]);
     edits.push({ at: [semi, semi], text: ` from ${memberOf(ol, source)}` });
   }
-  if (mode === "push") edits.push(...legs(src, ol, source, true));
   return edits;
 }
 
@@ -316,26 +316,22 @@ function memberEdit(src: string, q: Queue, text: string): Edit {
   return last(src, q.body, text);
 }
 
-/** Turn a copy's pull into push and back. In a push the source posts into
- * blocks the reader allocated, so the reader is asked before the source is
- * done: the source's call becomes a leg of its own (`fork { … }`, as in
- * serQ's vllm_nixl_push.sq), which serQ requires of a push. Back to a pull,
- * a fork holding the source's call alone goes. */
+/** Turn a copy's pull into push and back. A push is dispatched in order, as
+ * a pull is (serQ #660): the source's call is not made a leg of its own,
+ * whose `join` serQ would draw as an arrow from the caller into the
+ * reader's NIC. Back to a pull, a fork holding the source's call alone
+ * (serQ's vllm_nixl_push.sq has one) goes. */
 export function toggle(src: string, ol: Outline, r: Relation): Edit[] {
-  return [{ at: r.function, text: r.mode === "pull" ? "nixl_push" : "nixl_pull" }, ...legs(src, ol, r.source, r.mode === "pull")];
+  return [{ at: r.function, text: r.mode === "pull" ? "nixl_push" : "nixl_pull" }, ...(r.mode === "push" ? unfork(src, ol, r.source) : [])];
 }
 
-/** Each call of queue `source` made a leg of its own (`fork { … }`), or,
- * `fork` false, a fork holding the call alone taken away. */
-function legs(src: string, ol: Outline, source: string, fork: boolean): Edit[] {
+/** Each call of queue `source` that a fork holds alone taken out of it. */
+function unfork(src: string, ol: Outline, source: string): Edit[] {
   const out: Edit[] = [];
   for (const c of callsOf(ol, source)) {
     const head = /fork\s*\{\s*$/.exec(src.slice(lineStart(src, c.range[0]), c.range[0]));
     const tail = /^\s*\}/.exec(src.slice(c.range[1]));
-    const forked = head !== null && tail !== null;
-    if (fork && !forked) {
-      out.push({ at: [c.range[0], c.range[0]], text: "fork { " }, { at: [c.range[1], c.range[1]], text: " }" });
-    } else if (!fork && forked) {
+    if (head && tail) {
       const start = c.range[0] - head[0].length;
       out.push({ at: [start, c.range[0]], text: "" }, { at: [c.range[1], c.range[1] + tail[0].length], text: "" });
     }
