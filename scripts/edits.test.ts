@@ -2,7 +2,7 @@
 // and draws with the station the edit meant. Run by scripts/check-edits.sh
 // (esbuild bundles this file for Node, with serQ's wasm).
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { apply, connect, copy, declarePool, fresh, instance, remove, resize, retype, toggle, type Draft, type Edit } from "../web/src/edit";
 import { outline as read, outputParam, type Outline } from "../web/src/outline";
 import * as snip from "../web/src/snippets";
@@ -11,8 +11,27 @@ import { draw, initSync, ir, outline } from "../web/src/wasm/serq_wasm.js";
 
 initSync({ module: readFileSync(new URL("../web/src/wasm/serq_wasm_bg.wasm", import.meta.url)) });
 
-const example = (name: string) => readFileSync(new URL(`../web/src/examples/${name}.sq`, import.meta.url), "utf8");
+const example = (name: string) => readFileSync(new URL(`../web/src/examples/deployments/${name}.sq`, import.meta.url), "utf8");
 const ol = (src: string): Outline => read(outline(src), src);
+
+/** serQ's workloads: a deployment, edited, is checked under one its server's
+ * signature takes, since an edit may change what a request carries. */
+const workloadDir = `${process.env.SERQ_DIR}/examples/workloads`;
+const workloadTexts = readdirSync(workloadDir)
+  .filter((f) => f.endsWith(".sq"))
+  .sort()
+  .map((f) => readFileSync(`${workloadDir}/${f}`, "utf8"));
+/** What a workload sends, by the server's parameters' names, and the reply it reads. */
+const sends = (w: string) => (/\bsend \(([^;]*)\);/.exec(w)?.[1] ?? "").split(",").map((b) => b.split(":")[0].trim()).filter(Boolean);
+const reads = (w: string) => [...w.matchAll(/\breply\.(\w+)/g)].map((m) => m[1]);
+function workloadFor(src: string): string {
+  const sig = ol(src).signature;
+  const params = (sig?.params ?? []).map((p) => p.name).sort().join();
+  const reply = sig?.reply ?? [];
+  const w = workloadTexts.find((w) => sends(w).sort().join() === params && reads(w).every((r) => reply.includes(r)));
+  if (w === undefined) throw new Error(`no serQ workload sends what the server takes: (${params})`);
+  return w;
+}
 let failed = 0;
 
 function check(name: string, src: string, edits: Edit[] | string, expect: { stages?: string[]; text?: string[]; refused?: RegExp; instances?: number }) {
@@ -31,8 +50,9 @@ function check(name: string, src: string, edits: Edit[] | string, expect: { stag
   }
   let svg: string;
   try {
-    ir(out);
-    svg = draw(out);
+    const workload = workloadFor(out);
+    ir(out, workload);
+    svg = draw(out, workload);
   } catch (e) {
     if (expect.refused?.test(String((e as Error).message ?? e))) return console.log(`ok   ${name}: serQ refused as meant`);
     failed++;

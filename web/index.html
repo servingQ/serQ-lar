@@ -60,10 +60,10 @@
           <!-- a pair's two files side by side (stacked on a phone): the deployment, which Flow edits, and its workload -->
           <div class="code-split min-h-0 flex-1">
             <section class="code-file" aria-label="Deployment">
-              <div id="deployment-head" class="code-head" hidden></div>
+              <div id="deployment-head" class="code-head"></div>
               <div id="source" class="source min-h-0 flex-1"></div>
             </section>
-            <section id="workload-pane" class="code-file" aria-label="Workload" hidden>
+            <section id="workload-pane" class="code-file" aria-label="Workload">
               <div id="workload-head" class="code-head"></div>
               <div id="workload-source" class="source min-h-0 flex-1"></div>
             </section>
@@ -81,9 +81,9 @@
           <div id="run-bar" class="run-bar border-b border-line bg-panel" data-show="flow metrics">
             <div id="prog-head" class="prog-head">
               <div class="prog-pick flex items-center gap-2">
-                <select id="program" class="min-w-0 flex-1 font-mono text-[13px]" aria-label="Example program"></select>
-                <!-- a deployment runs under a workload of its own file, which the tool pairs with it (serQ --workload) -->
-                <select id="workload" class="min-w-0 flex-1 font-mono text-[13px]" aria-label="Workload" title="The workload the deployment runs under: a file of its own, paired by serQ" hidden></select>
+                <select id="program" class="min-w-0 flex-1 font-mono text-[13px]" aria-label="Deployment" title="The deployment: an example of serQ's"></select>
+                <!-- the deployment runs under a workload of its own file, which serQ pairs with it (--workload) -->
+                <select id="workload" class="min-w-0 flex-1 font-mono text-[13px]" aria-label="Workload" title="The workload the deployment runs under: a file of its own, paired by serQ"></select>
                 <button id="draw" class="btn-primary" title="The figure follows the text as you type; this runs it again">
                   <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4.5h-4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   Run again

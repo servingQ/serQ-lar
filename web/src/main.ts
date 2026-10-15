@@ -15,16 +15,17 @@ import { render, type Report, type Selection } from "./report";
 import { Serq } from "./serq";
 import type { Ir, Report as RunReport } from "./series";
 
-const programs = import.meta.glob<string>("./examples/*.sq", { query: "?raw", import: "default", eager: true });
-/** Deployments without a workload, and the workloads the tool pairs with them (serQ `--workload`). */
+/** serQ's examples: each a deployment, and the workloads it can run under,
+ * a file of their own that serQ pairs with it (`--workload`). */
 const deployments = import.meta.glob<string>("./examples/deployments/*.sq", { query: "?raw", import: "default", eager: true });
 const workloads = import.meta.glob<string>("./examples/workloads/*.sq", { query: "?raw", import: "default", eager: true });
+/** The workload each deployment starts under: serQ's `examples/pairs.json`. */
+const pairs = Object.values(
+  import.meta.glob<Record<string, string>>("./examples/pairs.json", { import: "default", eager: true }),
+)[0];
 const stem = (p: string) => p.replace(/^.*\//, "").replace(/\.sq$/, "");
-const names = Object.keys(programs).map(stem).sort();
 const deploymentNames = Object.keys(deployments).map(stem).sort();
 const workloadNames = Object.keys(workloads).map(stem).sort();
-/** The workload a deployment starts under. */
-const DEFAULT_WORKLOAD = "multi_turn";
 
 /** The most log events a run keeps: past it the replay stops early and says so. */
 const LOG_CAP = 400_000;
@@ -36,7 +37,6 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const root = document.documentElement;
 const select = $<HTMLSelectElement>("program");
 const workloadSelect = $<HTMLSelectElement>("workload");
-const workloadPane = $<HTMLElement>("workload-pane");
 const deploymentHead = $<HTMLDivElement>("deployment-head");
 const workloadHead = $<HTMLDivElement>("workload-head");
 /** serQ's figure, laid out off the page: the Flow view's graph and words are read off it. */
@@ -125,15 +125,12 @@ function fail(message: string) {
 
 // ------------------------------------------------------------ a pair's two files ----
 
-/** The program is a deployment, paired with a workload file (serQ `--workload`). */
-const paired = () => select.value.startsWith("deployment:");
-/** The text serQ compiles, and a pair's workload. */
-function texts(): { src: string; workload?: string } {
-  return paired() ? { src: editor.text, workload: workloadEditor.text } : { src: editor.text };
+/** The texts serQ compiles: the deployment, and the workload file it runs (serQ `--workload`). */
+function texts(): { src: string; workload: string } {
+  return { src: editor.text, workload: workloadEditor.text };
 }
-/** Which text a diagnostic is about: serQ names a pair's file first (`workload: 3:5: …`). */
+/** Which text a diagnostic is about: serQ names its file first (`workload: 3:5: …`). */
 function fileOf(message: string): string {
-  if (!paired()) return "program";
   return /^workload: /.test(message) ? "workload" : /^deployment: /.test(message) ? "deployment" : "";
 }
 
@@ -586,31 +583,16 @@ new ResizeObserver(() => (replayPane.style.width = `${mainEl.clientWidth}px`)).o
 }
 
 
-{
-  const one = document.createElement("optgroup");
-  one.label = "programs";
-  for (const n of names) one.append(new Option(n, n));
-  const pairs = document.createElement("optgroup");
-  pairs.label = "deployments, under a workload";
-  for (const n of deploymentNames) pairs.append(new Option(n, `deployment:${n}`));
-  select.append(one, pairs);
-  for (const n of workloadNames) workloadSelect.add(new Option(n, n));
-  workloadSelect.value = workloadNames.includes(DEFAULT_WORKLOAD) ? DEFAULT_WORKLOAD : workloadNames[0];
-}
-select.value = names.includes("llmd_nixl_pull") ? "llmd_nixl_pull" : names[0];
+for (const n of deploymentNames) select.add(new Option(n, n));
+for (const n of workloadNames) workloadSelect.add(new Option(n, n));
+select.value = deploymentNames.includes("llmd_nixl_pull") ? "llmd_nixl_pull" : deploymentNames[0];
+// another deployment: its text, under the workload serQ pairs it with
 const load = () => {
-  const pair = paired();
-  workloadSelect.hidden = !pair;
-  workloadPane.hidden = !pair;
-  deploymentHead.hidden = !pair;
-  if (pair) {
-    const d = select.value.slice("deployment:".length);
-    editor.reset(deployments[`./examples/deployments/${d}.sq`]);
-    deploymentHead.innerHTML = `<b>${d}.sq</b> · deployment`;
-    showWorkload();
-  } else {
-    editor.reset(programs[`./examples/${select.value}.sq`]);
-  }
+  const d = select.value;
+  editor.reset(deployments[`./examples/deployments/${d}.sq`]);
+  deploymentHead.innerHTML = `<b>${d}.sq</b> · deployment`;
+  if (workloadNames.includes(pairs[d])) workloadSelect.value = pairs[d];
+  showWorkload();
   last = null;
   selected = null;
   metricsSelected = null;

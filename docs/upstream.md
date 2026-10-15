@@ -359,15 +359,21 @@ deployment file and a workload file (no `fn main()`), paired by the tool
 They meet only at the server's signature; each file's names are its own,
 and serQ's messages name their file (`workload: 1:5: …`).
 `crates/serq-wasm` takes an optional workload text on `ir`, `draw`,
-`outline` and `run`. The page lists serQ's `examples/paired/` deployments
-beside the programs; a deployment gets a second picker, its workload, and
-the Code tab shows the two files side by side (stacked on a phone), each
-in its own editor and undo history. Flow edits the deployment; a diagnostic opens the file it
-names. A deployment starts under `multi_turn` (`DEFAULT_WORKLOAD` in
-`main.ts`), a stopgap until serQ says each deployment's default workload
-(`examples/pairs.json`, the next serQ step, where every example is a pair).
-Not yet: marking a workload that does not fit a deployment's signature
-before it is run (serQ's error says so after).
+`outline` and `run`.
+
+serQ [#648](https://github.com/servingQ/serQ/issues/648),
+[#649](https://github.com/servingQ/serQ/pull/649), in v0.1.6-alpha.10: a
+program is the deployment, and the workload only a file given when it
+runs; a `workload` in `fn main` does not link. Every serQ example is a
+deployment and a workload (`examples/workloads/`), and
+`examples/pairs.json` says which workload each runs. The page lists the
+examples as deployments (`scripts/sync-examples.sh` copies them, the
+workloads that read no trace, and each one's workload as
+`web/src/examples/pairs.json`); switching to one picks its workload. The
+Code tab shows the two files side by side (stacked on a phone), each in
+its own editor and undo history. Flow edits the deployment; a diagnostic
+opens the file it names. Not yet: marking a workload that does not fit a
+deployment's signature before it is run (serQ's error says so after).
 
 ## U19. The figure's words, on what they label
 
