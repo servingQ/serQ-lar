@@ -59,7 +59,7 @@ See [upstream.md](upstream.md), U10.
      an engine, declared there (7) by a name its queue has not got.
    - *Routing*: Router, dropped on an engine: each call to it chooses a
      member of its queue (`route` in `edit.ts`; a plain queue becomes a
-     family of one, as Make instance does, NIC or not), by the least
+     family of one, as Make instance does), by the least
      work, until the router is given its keys (8).
    - *Arrows*: Call, dropped on the client or a station: an arrow from
      there follows the pointer, and the station or draft clicked next is
@@ -136,15 +136,13 @@ See [upstream.md](upstream.md), U10.
    the engine, NIC and pools one `choose` variable indexes. Make instance
    writes that: the queue a family of one (`queue P[1]`), each call
    choosing its member (`choose k in 1 by (work(P[k])); P[k].prefill
-   (…);`), a call reading the KV `from P` reading it `from P[k]`. serQ
-   copies KV between two families or two queues, not one of each, so the
-   queue at the copy's other end becomes an instance too, by a variable of
-   its own. A queue with no NIC is sent to draw a KV transfer first: serQ
-   refuses a NIC that carries no copy. A memory pool declares a pool and the capacity
-   serQ sizes it by (`waitq cap 8;` in the engine and `pool waitq on P {
-   queue fifo; }`, or `kv cap N;` in the device and `pool kv on gpu { … }`);
-   KV blocks only where the device has none, since serQ takes one KV pool
-   a device.
+   (…);`), a call reading the KV `from P` reading it `from P[k]`; the
+   queue at a KV copy's other end stays as it is (serQ copies between a
+   family and a single queue, serQ #664). A memory pool declares a pool and
+   the capacity serQ sizes it by (`waitq cap 8;` in the engine and `pool
+   waitq on P { queue fifo; }`, or `kv cap N;` in the engine's device and
+   `pool kv on P.gpu { … }`), after the capacities serQ's outline lists
+   there (`engines`, `devices`).
 8. **The inspector** (the right of the Flow tab: the router or the client
    clicked). Each property is a piece of the text serQ's outline places
    (`chooses`, `workload_items`, upstream.md U21), shown as written and
@@ -162,6 +160,12 @@ See [upstream.md](upstream.md), U10.
    edit goes into that file.
    With a serQ whose outline places neither, it shows serQ's words and
    sends the edit to Code.
+
+Whether an edit may be made is serQ's to say, not the page's: every edit
+from the figure is compiled first, and one serQ refuses is not made; its
+refusal, with serQ's code (`error[E-…]`), is said under the canvas and
+the text stays as it was. A removal is the exception: it is made, and
+serQ's diagnostic names what still refers to what went.
 
 `scripts/check-edits.sh` runs every edit on serQ's examples and asks serQ
 to link and draw the result.

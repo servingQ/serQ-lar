@@ -1,7 +1,7 @@
 import "./style.css";
 import { EditorView } from "@codemirror/view";
 import { anchors, type Anchors } from "./anchors";
-import { Compose } from "./compose";
+import { applyEdits, Compose } from "./compose";
 import type { Draft, Edit, From, To } from "./edit";
 import { clientOf, routerOf, type SerqFunction } from "./inspect";
 import { Dashboard, withGauges } from "./dashboard";
@@ -386,9 +386,33 @@ function sayIt(m: string, bad?: boolean) {
 const compose = new Compose({
   text: () => texts().src,
   outline: () => currentOutline,
-  apply: (edits) => editor.apply(edits),
+  apply: (edits, checked = true) => tryEdits(edits, checked),
   say: (m, bad) => sayIt(m, bad),
 });
+
+/** An edit from the figure, made only if serQ links its result: whether it
+ * may be is serQ's rule, not the page's. Refused, the text stays as it was
+ * and serQ's refusal (its code first) is said. Unchecked (a removal), it is
+ * made, and serQ's diagnostic shows what still refers to what went. */
+async function tryEdits(edits: Edit[], checked: boolean): Promise<boolean> {
+  const was = editor.text;
+  if (checked) {
+    const { workload } = texts();
+    const r = await drawer.ask({ cmd: "ir", src: applyEdits(was, edits), workload });
+    if (!r.ok) {
+      const first = r.error.split("\n")[0].replace(/^(deployment|workload): /, "");
+      sayIt(`serQ refuses it, so the text is as it was: ${first}`, true);
+      return false;
+    }
+  }
+  // the text moved on while serQ looked: these ranges are for the old one
+  if (editor.text !== was) {
+    sayIt("The text changed meanwhile: do it again.", true);
+    return false;
+  }
+  editor.apply(edits);
+  return true;
+}
 // ------------------------------------------------------------ the views ----
 
 /** Flow: the deployment, serQ's graph with its words, the run replayed over

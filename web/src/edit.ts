@@ -4,7 +4,7 @@
 // where serQ's outline says the thing is written. Whether the result is a
 // program is serQ's answer, when the page compiles it.
 
-import { outputParam, promptParam, type Call, type Outline, type Queue, type Range, type Relation } from "./outline";
+import { outputParam, promptParam, type Call, type Cap, type Outline, type Queue, type Range, type Relation } from "./outline";
 import * as snip from "./snippets";
 
 export interface Edit {
@@ -271,7 +271,6 @@ export function copy(src: string, ol: Outline, source: string, reader: string, m
   const S = ol.queues.find((q) => q.name === source);
   const R = ol.queues.find((q) => q.name === reader);
   if (!S || !R) return "a KV copy joins two queues";
-  if (ol.relations.some((r) => r.reader === reader)) return `\`${reader}\` already reads its KV from a queue: a reader has one source`;
   const edits: Edit[] = [...needUses(src, ol)];
   for (const q of [S, R]) if (!q.members.some((m) => m.kind === "nic")) edits.push(memberEdit(src, q, snip.nic()));
   // the reader's engine reads the KV with a connector to the source
@@ -431,27 +430,32 @@ export function addPool(src: string, ol: Outline, q: string, text: string): Edit
 /** Declare a memory pool `name` in queue `q`, and the capacity serQ sizes
  * it by (a pool is one of its device's or engine's capacities): request
  * slots, `name cap N;` in the engine and the pool on the queue; KV blocks,
- * `name cap N;` (tokens) in the device and the pool on it. serQ takes one KV
- * pool per device. */
+ * `name cap N;` (tokens) in the engine's device and the pool on it. Which
+ * device that is, and where its capacities are written, is serQ's outline's
+ * (`engines`, `devices`); whether the device may hold another pool is
+ * serQ's to say (`E-device-two-pools`) when the result is compiled. */
 export function declarePool(src: string, ol: Outline, q: string, name: string, kind: "slots" | "blocks", cap: string): Edit[] | string {
   const Q = ol.queues.find((x) => x.name === q);
   if (!Q) return `no queue \`${q}\``;
-  if (Q.members.some((m) => m.kind === "pool" && m.name === name)) return `${q} has a pool \`${name}\` already`;
+  const engine = ol.engines?.find((e) => e.name === q);
+  const device = engine?.device ? ol.devices?.find((d) => d.name === engine.device) : undefined;
   const holder = Q.members.find((m) => m.kind === (kind === "slots" ? "engine" : "device"));
   if (!holder?.body) return `queue \`${q}\` has no ${kind === "slots" ? "engine" : "device"} to size the pool by`;
-  const pool = addPool(src, ol, q, snip.pool(name, kind === "slots" ? q : holder.name ?? "gpu", kind));
+  const on = kind === "slots" ? q : (device?.name ?? holder.name ?? "gpu");
+  const pool = addPool(src, ol, q, snip.pool(name, on, kind));
   if (typeof pool === "string") return pool;
-  return [capacity(src, holder.body, snip.capacity(name, cap)), ...pool];
+  return [capacity(src, holder.body, (kind === "slots" ? engine : device)?.caps ?? [], snip.capacity(name, cap)), ...pool];
 }
 
-/** A capacity in a device's or an engine's body: after the last one there, or the body's first line. */
-function capacity(src: string, body: Range, stmt: string): Edit {
+/** A capacity in a device's or an engine's body: after the last one serQ's
+ * outline lists there (`caps`), or the body's first line. */
+function capacity(src: string, body: Range, caps: Cap[], stmt: string): Edit {
   const inside = src.slice(body[0], body[1]);
   // `device gpu { …; kv cap X; }` on one line: before its closing brace
   if (!inside.includes("\n")) return { at: [body[1], body[1]], text: `${/\s$/.test(inside) ? "" : " "}${stmt} ` };
-  const caps = [...inside.matchAll(/\b[A-Za-z_]\w*\s+cap\b[^;{}]*;/g)];
-  const lastCap = caps[caps.length - 1];
-  return lastCap ? after(src, body[0] + lastCap.index + lastCap[0].length, stmt) : first(src, body, stmt);
+  const lastCap = caps.filter((c) => c.range[0] >= body[0] && c.range[1] <= body[1]).sort((a, b) => a.range[0] - b.range[0]).at(-1);
+  const end = lastCap ? src.indexOf(";", lastCap.range[1]) : -1;
+  return end >= 0 && end < body[1] ? after(src, end + 1, stmt) : first(src, body, stmt);
 }
 
 /** The size of a family: the `let` it names, or the number in its brackets. */
@@ -475,29 +479,24 @@ export function resize(src: string, ol: Outline, q: string, by: number): Edit[] 
   return [{ at: [at, at + m[1].length], text: String(n) }];
 }
 
-/** Make queue `q`'s engine and NIC an instance, the panel serQ draws around
- * what one `choose` variable indexes: the queue a family of one (`queue
- * P[1]`), each call choosing its member (`choose k in 1 by (work(P[k]));
- * P[k].prefill (…);`), and a call reading the KV `from P` reading it from
- * that member. serQ runs a KV copy between two families or two queues, not
- * one of each, so the queue at the copy's other end becomes an instance
- * too, by a variable of its own. A NIC carries a copy (serQ refuses one that
- * carries none): a queue without one is sent to + NIC first. The instances
- * stay one each: the −/+ beside them makes them more. */
+/** Make queue `q` an instance, the panel serQ draws around what one
+ * `choose` variable indexes (its engine, and its NIC and pools if it has
+ * them): the queue a family of one (`queue P[1]`), each call choosing its
+ * member (`choose k in 1 by (work(P[k])); P[k].prefill (…);`), and a call
+ * reading the KV `from P` reading it from that member (`route`). The
+ * instances stay one each: their count is written in the text. */
 export function instance(src: string, ol: Outline, q: string): Edit[] | string {
   const Q = ol.queues.find((x) => x.name === q);
-  if (!Q) return `\`${q}\` is no queue: an instance is a queue's engine with its NIC`;
-  if (!Q.members.some((m) => m.kind === "engine")) return `queue \`${q}\` has no engine to make an instance of`;
-  if (!Q.members.some((m) => m.kind === "nic")) return `\`${q}\` has no NIC to bundle: draw a KV transfer from it first, then make the instance`;
-  if (Q.family) return `\`${q}[${Q.family}]\` is a family with its NIC already: serQ draws its instance when its calls choose a member (\`choose k in … ; ${q}[k]…\`)`;
+  if (!Q) return `\`${q}\` is no queue: an instance is a queue's engine, its NIC and its pools`;
+  if (Q.family) return `\`${q}[${Q.family}]\` is a family already: serQ draws its instance when its calls choose a member (\`choose k in … ; ${q}[k]…\`)`;
   return route(src, ol, q);
 }
 
 /** Route queue `q`'s calls through a router: each call chooses a member of
  * its family (`choose k in ND by (work(D[k])); D[k].decode (…);`), by the
  * least work until the router is given other keys. A plain queue becomes a
- * family of one; so does the queue at a KV copy's other end, by a variable
- * of its own, since serQ runs a copy between two families or two queues. */
+ * family of one; the queue at a KV copy's other end stays as it is (serQ
+ * copies between a family and a single queue, #664). */
 export function route(src: string, ol: Outline, q: string): Edit[] | string {
   const Q = ol.queues.find((x) => x.name === q);
   if (!Q) return `\`${q}\` is no queue: a router chooses among a queue's members`;
@@ -513,19 +512,7 @@ export function route(src: string, ol: Outline, q: string): Edit[] | string {
     }
     return edits;
   }
-  const ends = [Q, ...ol.relations.flatMap((r) => (r.source === q ? [r.reader] : r.reader === q ? [r.source] : [])).map((n) => ol.queues.find((x) => x.name === n)!)].filter(
-    (x, i, all) => x && !x.family && all.indexOf(x) === i,
-  );
-  const edits: Edit[] = [];
-  let taken = src;
-  for (const X of ends) {
-    const v = freshVar(taken);
-    taken += ` ${v}`;
-    const e = familyOfOne(src, ol, X, v);
-    if (typeof e === "string") return e;
-    edits.push(...e);
-  }
-  return edits;
+  return familyOfOne(src, ol, Q, freshVar(src));
 }
 
 /** Queue `X` a family of one whose calls choose their member by `v`. */
