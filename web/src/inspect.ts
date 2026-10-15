@@ -2,7 +2,7 @@
 // edits it makes: each property is a piece of the text serQ's outline places
 // (a `choose`'s keys, the workload's arrival), shown as it is written and
 // written back as the viewer types it. What it means is serQ's to say when it
-// compiles the result; the page only offers ready-made keys to pick from.
+// compiles the result; the keys offered are calls of serQ's functions.
 
 import type { Edit } from "./edit";
 import type { Outline, Range, WorkloadItem } from "./outline";
@@ -15,7 +15,7 @@ export interface Prop {
   set?: (text: string) => void;
   remove?: () => void;
   /** Ready-made values to pick from. */
-  presets?: { label: string; value: string }[];
+  presets?: Preset[];
   hint?: string;
 }
 
@@ -26,7 +26,7 @@ export interface Section {
   /** What a router's choice picks a member of, and the families it could pick from. */
   target?: { value: string; options: string[]; set: (family: string) => void };
   /** A new key, from the presets or typed. */
-  add?: { presets: { label: string; value: string }[]; put: (text: string) => void };
+  add?: { presets: Preset[]; put: (text: string) => void };
 }
 
 export interface Inspect {
@@ -39,9 +39,9 @@ export interface Inspect {
 const text = (src: string, r: Range) => src.slice(r[0], r[1]);
 
 /** The router: each `choose` of the server and its gateways, what it picks a
- * member of and by what keys; and the calls the server makes. `kv` names the
- * pools that are KV blocks (`D.kv`), for the cache-affinity key. */
-export function routerOf(ol: Outline, src: string, kv: Set<string>, apply: (edits: Edit[]) => void): Inspect {
+ * member of and by what keys; and the calls the server makes. `fns` are
+ * serQ's functions, which the keys offered call. */
+export function routerOf(ol: Outline, src: string, fns: SerqFunction[], apply: (edits: Edit[]) => void): Inspect {
   const sections: Section[] = [];
   const families = ol.queues.filter((q) => q.family !== null).map((q) => q.name);
   for (const c of ol.chooses ?? []) {
@@ -49,7 +49,7 @@ export function routerOf(ol: Outline, src: string, kv: Set<string>, apply: (edit
     const calls = ol.calls.filter((k) => k.index === c.var && k.block === c.block && k.owner === c.owner);
     const of = calls[0]?.queue ?? "";
     const keys = c.keys.map((r) => text(src, r));
-    const presets = presetsOf(ol, of, c.var, kv);
+    const presets = presetsOf(ol, of, c.var, fns);
     const by = (list: string[]) => apply([{ at: c.by, text: `(${list.join(", ")})` }]);
     sections.push({
       title: `choose ${c.var}${c.owner ? ` · ${c.owner}` : ""}`,
@@ -89,21 +89,38 @@ export function routerOf(ol: Outline, src: string, kv: Set<string>, apply: (edit
   return { kind: "router", title: gateways.length ? `router · ${gateways.join(", ")}` : "router", sub: "the server's choice of where each request goes", sections };
 }
 
-/** Keys a router's choice is often made by, over family `of`'s member `v`. */
-function presetsOf(ol: Outline, of: string, v: string, kv: Set<string>): { label: string; value: string }[] {
+/** Keys a router's choice can be made by, over family `of`'s member `v`:
+ * each of serQ's functions (`fns`) whose one parameter is a stage, called on
+ * the member, or a pool, called on each of the member's pools. Which they
+ * are, and what each returns, is serQ's to say; the member that sorts first
+ * is the one with the least. */
+function presetsOf(ol: Outline, of: string, v: string, fns: SerqFunction[]): Preset[] {
   if (!of) return [];
   const m = `${of}[${v}]`;
-  const out = [
-    { label: "least work", value: `work(${m})` },
-    { label: "at random", value: "~uniform(0, 1)" },
-  ];
   const pools = ol.queues.find((q) => q.name === of)?.members.filter((x) => x.kind === "pool" && x.name) ?? [];
-  for (const p of pools) {
-    out.push({ label: `fewest queued on ${p.name}`, value: `queued(${m}.${p.name})` });
-    out.push({ label: `fewest holding ${p.name}`, value: `holders(${m}.${p.name})` });
-    if (kv.has(`${of}.${p.name}`)) out.push({ label: `prefix cached on ${p.name}`, value: `cachedin(${m}.${p.name}) > 0 ? 0 : 1` });
+  const out: Preset[] = [];
+  for (const f of fns) {
+    if (f.params.length !== 1) continue;
+    const kind = f.params[0].kind;
+    if (kind === "stage") out.push({ label: `${f.name}(${m})`, value: `${f.name}(${m})`, title: f.summary });
+    else if (kind === "pool") for (const p of pools) out.push({ label: `${f.name}(${m}.${p.name})`, value: `${f.name}(${m}.${p.name})`, title: f.summary });
   }
   return out;
+}
+
+/** A function of serQ's, as `serq::frontend::highlight::functions` says it. */
+export interface SerqFunction {
+  name: string;
+  params: { name: string; kind: "expr" | "stage" | "pool" | "observe" | string }[];
+  group: string;
+  summary: string;
+}
+
+/** A ready-made value, and what serQ says it is. */
+export interface Preset {
+  label: string;
+  value: string;
+  title?: string;
 }
 
 /** The client: the workload's arrival, what each turn draws, its tool

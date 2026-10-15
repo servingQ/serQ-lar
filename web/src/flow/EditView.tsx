@@ -448,7 +448,7 @@ function PropRow({ p }: { p: Prop }) {
         <select className="fpreset" value="" onChange={(e) => e.target.value && p.set?.(e.target.value)} aria-label={`${p.label}: a ready-made one`} title="A ready-made one">
           <option value="">…</option>
           {p.presets.map((x) => (
-            <option key={x.value} value={x.value}>
+            <option key={x.value} value={x.value} title={x.title}>
               {x.label}
             </option>
           ))}
@@ -473,7 +473,7 @@ function AddKey({ add }: { add: NonNullable<Section["add"]> }) {
       <select className="fpreset" value="" onChange={(e) => e.target.value && add.put(e.target.value)} aria-label="A ready-made key">
         <option value="">…</option>
         {add.presets.map((x) => (
-          <option key={x.value} value={x.value}>
+          <option key={x.value} value={x.value} title={x.title}>
             {x.label}
           </option>
         ))}

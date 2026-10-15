@@ -166,6 +166,15 @@ pub fn outline(src: &str, workload: Option<String>) -> Result<String, JsError> {
     .map_err(|e| JsError::new(&e))
 }
 
+/// The functions a program may call, with their parameters' names and
+/// kinds (`expr`, `stage`, `pool`, `observe`), their group and what each
+/// returns (`serq::frontend::highlight::functions`): a JSON array. The
+/// router's inspector offers its keys from these.
+#[wasm_bindgen]
+pub fn functions() -> String {
+    serde_json::to_string(&serq::frontend::highlight::functions()).expect("the functions serialize")
+}
+
 /// Every word the language gives a program, with the role it is coloured
 /// by, for completing them (`serq::frontend::highlight::vocabulary`): a
 /// JSON array of `[role, word]`.
