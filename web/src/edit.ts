@@ -488,17 +488,17 @@ export function instance(src: string, ol: Outline, q: string): Edit[] | string {
   return route(src, ol, q);
 }
 
-/** Route queue `q`'s calls through a router: each call chooses a member of
+/** Route queue `q`'s calls through the gateway: each call chooses a member of
  * its family (`choose k in ND by (work(D[k])); D[k].decode (…);`), by the
- * least work until the router is given other keys. A plain queue becomes a
+ * least work until the gateway is given other keys. A plain queue becomes a
  * family of one; the queue at a KV copy's other end stays as it is (serQ
  * copies between a family and a single queue, #664). */
 export function route(src: string, ol: Outline, q: string): Edit[] | string {
   const Q = ol.queues.find((x) => x.name === q);
-  if (!Q) return `\`${q}\` is no queue: a router chooses among a queue's members`;
+  if (!Q) return `\`${q}\` is no queue: a gateway chooses among a queue's members`;
   if (Q.family) {
     const calls = callsOf(ol, q).filter((c) => c.index === null);
-    if (!calls.length) return `every call to \`${q}\` chooses its member already: click the router to change how`;
+    if (!calls.length) return `every call to \`${q}\` chooses its member already: click the gateway to change how`;
     const v = freshVar(src);
     const edits: Edit[] = [];
     for (const c of calls) {

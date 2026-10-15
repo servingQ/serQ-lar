@@ -28,6 +28,9 @@ export interface Wire {
   id: string;
   from: string;
   to: string;
+  /** A reply's end at the gateway, under it: coming in from where its turn
+   * ended (`to`), or going out to the client (`from`). */
+  reply?: "to" | "from";
 }
 
 // The parts of libavoid-js's binding the router uses (its own typings name no module).
@@ -63,11 +66,14 @@ export function avoid(): Promise<Avoid> {
   return lib;
 }
 
-/** The pins every node has: an output on its right, an input on its left. */
+/** The pins every node has: an output on its right, an input on its left;
+ * and under it, where replies come into the gateway and go out of it. */
 const OUT = 1;
 const IN = 2;
+const REPLY_IN = 3;
+const REPLY_OUT = 4;
 
-/** Each wire's route, from its source's right edge to its target's left edge (or its foot). */
+/** Each wire's route, from its source's right edge to its target's left edge (or its foot); a reply's, under the gateway. */
 export function route(A: Avoid, nodes: Obstacle[], wires: Wire[]): Map<string, Point[]> {
   const r = new A.Router(A.OrthogonalRouting);
   // a clearance around each node, and the spacing of arrows that would share a line
@@ -86,13 +92,15 @@ export function route(A: Avoid, nodes: Obstacle[], wires: Wire[]): Map<string, P
     new A.ShapeConnectionPin(s, OUT, 1, 0.5, true, 0, A.ConnDirRight).setExclusive(false);
     if (n.in === "bottom") new A.ShapeConnectionPin(s, IN, 0.5, 1, true, 0, A.ConnDirDown).setExclusive(false);
     else new A.ShapeConnectionPin(s, IN, 0, 0.5, true, 0, A.ConnDirLeft).setExclusive(false);
+    new A.ShapeConnectionPin(s, REPLY_IN, 0.65, 1, true, 0, A.ConnDirDown).setExclusive(false);
+    new A.ShapeConnectionPin(s, REPLY_OUT, 0.35, 1, true, 0, A.ConnDirDown).setExclusive(false);
     shapes.set(n.id, s);
   }
   const conns: [string, InstanceType<Avoid["ConnRef"]>][] = [];
   for (const w of wires) {
     const a = shapes.get(w.from);
     const b = shapes.get(w.to);
-    if (a && b && a !== b) conns.push([w.id, new A.ConnRef(r, keep(new A.ConnEnd(a, OUT)), keep(new A.ConnEnd(b, IN)))]);
+    if (a && b && a !== b) conns.push([w.id, new A.ConnRef(r, keep(new A.ConnEnd(a, w.reply === "from" ? REPLY_OUT : OUT)), keep(new A.ConnEnd(b, w.reply === "to" ? REPLY_IN : IN)))]);
   }
   r.processTransaction();
   const out = new Map<string, Point[]>();

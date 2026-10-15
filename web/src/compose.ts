@@ -117,7 +117,7 @@ export class Compose {
     this.host.say(`${name}: an instance, ${name}[1], its calls choosing a member; how many is written in the text, \`queue ${name}[1]\`. Ctrl+Z undoes it.`);
   }
 
-  /** Route a station's calls through the router (edit.ts `route`): each chooses a member of its queue. */
+  /** Route a station's calls through the gateway (edit.ts `route`): each chooses a member of its queue. */
   async routeTo(stage: string) {
     const ol = this.host.outline();
     if (!ol) return this.host.say("serQ cannot read the text as it is: fix it first.", true);
@@ -125,7 +125,7 @@ export class Compose {
     const edits = route(this.host.text(), ol, name);
     if (typeof edits === "string") return this.host.say(edits, true);
     if (!(await this.host.apply(edits))) return;
-    this.host.say(`The router chooses a member of ${name} for each call to it, by the least work; click the router to change how. Ctrl+Z undoes it.`);
+    this.host.say(`The gateway chooses a member of ${name} for each call to it, by the least work; click the gateway to change how. Ctrl+Z undoes it.`);
   }
 
   /** Declare a memory pool in a station's queue, with its capacity: request slots on its engine, or KV blocks on its device. */
