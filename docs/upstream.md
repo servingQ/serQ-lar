@@ -455,3 +455,13 @@ instance is, which keys a `choose` takes, where a pool admits. serQ
 them: a code and a fix-it on each diagnostic, and queries in the outline
 (instances, a device's KV pool, capacities, what each stage takes, role
 templates, a `choose`'s keys). serq-lar keeps only how each is shown.
+
+Landed so far: the router's keys are serQ's functions
+([#669](https://github.com/servingQ/serQ/pull/669),
+`highlight::functions`, which `crates/serq-wasm` hands as `functions()`):
+the inspector offers each whose one parameter is a stage or a pool, on
+the chosen member, and no longer knows which pool is KV. A push needs no
+fork after all ([#660](https://github.com/servingQ/serQ/pull/660)), and a
+copy's ends need not both be families
+([#664](https://github.com/servingQ/serQ/pull/664)): serq-lar's edits
+still write both, and can stop.

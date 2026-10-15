@@ -3,7 +3,7 @@ import { EditorView } from "@codemirror/view";
 import { anchors, type Anchors } from "./anchors";
 import { Compose } from "./compose";
 import type { Draft, Edit, From, To } from "./edit";
-import { clientOf, routerOf } from "./inspect";
+import { clientOf, routerOf, type SerqFunction } from "./inspect";
 import { Dashboard, withGauges } from "./dashboard";
 import { Editor } from "./editor";
 import { CLIENT, graphOf, draftId, type Graph } from "./flow/graph";
@@ -374,6 +374,8 @@ flowEl.addEventListener(
 // ------------------------------------------------------------ editing ----
 
 let currentOutline: Outline | null = null;
+/** serQ's functions (`highlight::functions`), once the worker has said them. */
+let serqFunctions: SerqFunction[] = [];
 let sayTimer = 0;
 function sayIt(m: string, bad?: boolean) {
   say.textContent = m;
@@ -461,8 +463,7 @@ const editHost: EditHost = {
       return clientOf(ol, workload, words, (edits: Edit[]) => workloadEditor.apply(edits), currentOutline.signature);
     }
     if (!id.startsWith("#")) return null;
-    const pools = drawnFrom ? ((JSON.parse(drawnFrom.ir) as { pools?: { name: string; block: number | null }[] }).pools ?? []) : [];
-    return routerOf(currentOutline, src, new Set(pools.filter((p) => p.block !== null).map((p) => p.name)), (edits: Edit[]) => editor.apply(edits));
+    return routerOf(currentOutline, src, serqFunctions, (edits: Edit[]) => editor.apply(edits));
   },
   code(id) {
     // the client is written in the workload file
@@ -684,6 +685,10 @@ drawer.ask({ cmd: "vocabulary" }).then((r) => {
   if (!r.ok) return;
   editor.vocabulary = JSON.parse(r.value);
   workloadEditor.vocabulary = JSON.parse(r.value);
+});
+// the functions a router's keys may call, serQ's
+drawer.ask({ cmd: "functions" }).then((r) => {
+  if (r.ok) serqFunctions = JSON.parse(r.value) as SerqFunction[];
 });
 load();
 

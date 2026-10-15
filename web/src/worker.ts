@@ -1,11 +1,11 @@
 // serQ runs here, off the page's thread: a run of an hour's horizon takes
 // seconds (docs/performance.md), and the page must keep animating.
 
-import init, { draw, ir, outline, run, run_logged, tokens, vocabulary } from "./wasm/serq_wasm.js";
+import init, { draw, functions, ir, outline, run, run_logged, tokens, vocabulary } from "./wasm/serq_wasm.js";
 import wasmUrl from "./wasm/serq_wasm_bg.wasm?url";
 
 export type Request =
-  | { id: number; cmd: "vocabulary" }
+  | { id: number; cmd: "vocabulary" | "functions" }
   /** `workload`: the program is a deployment the tool pairs with this workload file. */
   | { id: number; cmd: "draw" | "ir" | "outline"; src: string; workload?: string }
   | { id: number; cmd: "tokens"; src: string }
@@ -23,6 +23,9 @@ self.onmessage = async (m: MessageEvent<Request>) => {
   try {
     let value: string;
     switch (q.cmd) {
+      case "functions":
+        value = functions();
+        break;
       case "vocabulary":
         value = vocabulary();
         break;

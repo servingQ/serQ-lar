@@ -151,16 +151,17 @@ See [upstream.md](upstream.md), U10.
    written back on Enter or leaving the field (`web/src/inspect.ts`).
    The router: for each `choose`, the family it picks a member of (`to`:
    another family rewrites its count, its calls and its keys), and its
-   keys in order, each typed, picked from ready-made ones (least work, at
-   random, fewest queued or holding on a pool, prefix cached on a KV
-   pool), removed, or added; and the calls it makes. The client: its
+   keys in order, each typed, picked from serQ's functions (`functions()`
+   in `crates/serq-wasm`, serQ's `highlight::functions`: each whose one
+   parameter is a stage, on the member, or a pool, on each of its pools,
+   with what serQ says it returns), removed, or added; and the calls it
+   makes. The client: its
    arrival process, what each session starts with, what each turn draws,
    what each request sends, and what comes between turns (a tool's time);
    for a pair, the workload file's (its outline's `workload_file`), and the
    edit goes into that file.
    With a serQ whose outline places neither, it shows serQ's words and
-   sends the edit to Code. Which keys are offered is a stopgap: serQ #645
-   asks serQ to say which a `choose` can take.
+   sends the edit to Code.
 
 `scripts/check-edits.sh` runs every edit on serQ's examples and asks serQ
 to link and draw the result.
