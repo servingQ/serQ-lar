@@ -505,7 +505,7 @@ function ServerNode() {
 const nodeTypes = { serq: SerqNode, instance: InstanceNode, server: ServerNode };
 
 /** An arrow along libavoid's route; until libavoid has loaded, React Flow's
- * own step path. serQ's words on it stand over its middle, a line each; a
+ * own step path. serQ's words on it are its hover title, not drawn on it; a
  * KV copy chosen has its mode on a toolbar under it. */
 function RoutedEdge(p: EdgeProps<Edge<{ route?: Point[]; poster?: string; words?: string[]; copy?: "pull" | "push" }>>) {
   const host = useContext(Host)!;
@@ -526,16 +526,10 @@ function RoutedEdge(p: EdgeProps<Edge<{ route?: Point[]; poster?: string; words?
   const zoom = useStore((s) => s.transform[2]);
   return (
     <>
-      <BaseEdge id={p.id} path={path} markerEnd={p.markerEnd} style={p.style} interactionWidth={p.interactionWidth} />
-      {words?.length ? (
-        <EdgeLabelRenderer>
-          <div className="flabel" style={{ transform: `translate(-50%, -100%) translate(${at.x}px, ${at.y - 3}px)` }}>
-            {words.map((w, i) => (
-              <span key={i}>{w}</span>
-            ))}
-          </div>
-        </EdgeLabelRenderer>
-      ) : null}
+      <g>
+        {words?.length ? <title>{words.join("\n")}</title> : null}
+        <BaseEdge id={p.id} path={path} markerEnd={p.markerEnd} style={p.style} interactionWidth={p.interactionWidth} />
+      </g>
       {copy && p.selected && (
         <EdgeLabelRenderer>
           <div className="ftools fedge-tools nodrag nopan" style={{ transform: `translate(${at.x}px, ${at.y}px) scale(${1 / zoom}) translate(-50%, 10px)`, transformOrigin: "0 0" }}>
@@ -613,7 +607,7 @@ function edgesOf(g: Graph): Edge[] {
       interactionWidth: copy ? 24 : 12,
       style: { stroke: colour, strokeWidth: copy ? 2 : 1.4, strokeDasharray: copy ? "6 4" : undefined },
       markerEnd: { type: MarkerType.ArrowClosed, color: colour, width: 16, height: 16 },
-      // serQ's words on the arrow: a condition, an exit's, a copy's way and latency
+      // serQ's words on the arrow, its hover title: a condition, an exit's, a copy's way and latency
       data: { poster: e.poster, words: e.words?.length ? e.words : copy && e.copy ? [e.copy] : undefined, copy: e.copy },
     };
   });

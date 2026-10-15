@@ -357,8 +357,6 @@ html[data-tab="metrics"] [data-show]:not([data-show~="metrics"]) { display: none
 /* the replay: over the nodes and edges, under React Flow's panels (z-index 5) */
 .flow-box { flex: 1 0 auto; }
 /* serQ's words on an arrow: a line each, over its middle */
-.flabel { position: absolute; display: flex; flex-direction: column; align-items: center; padding: 1px 4px; border-radius: 4px; background: color-mix(in srgb, var(--raised) 88%, transparent); font-family: var(--font-mono); font-size: 9.5px; line-height: 12px; color: var(--ink); white-space: nowrap; pointer-events: none; }
-.flabel span + span { color: var(--dim); }
 /* the words over the cards: an arrow between two close cards would hide them */
 .flow .react-flow__edgelabel-renderer { z-index: 1001; }
 .flow-replay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; }

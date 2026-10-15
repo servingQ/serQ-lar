@@ -249,7 +249,7 @@ const queueDraft = (src: string, role: snip.Own, stem: string): Draft => {
   e = connect(src, ol(src), { kind: "station", stage: "P" }, { kind: "draft", draft: D });
   if (typeof e !== "string") src = apply(src, e);
   check("arrows: KV copy P → D, a pull", src, copy(src, ol(src), "P", "D", "pull"), { stages: ["P.nic", "D.nic"], text: ["kvt.nixl_pull (P, D", "from P"] });
-  check("arrows: KV copy P → D, a push", src, copy(src, ol(src), "P", "D", "push"), { stages: ["P.nic", "D.nic"], text: ["kvt.nixl_push (P, D", "fork { P"] });
+  check("arrows: KV copy P → D, a push", src, copy(src, ol(src), "P", "D", "push"), { stages: ["P.nic", "D.nic"], text: ["kvt.nixl_push (P, D"] });
 }
 
 console.log(failed ? `${failed} FAILED` : "all edits ok");
