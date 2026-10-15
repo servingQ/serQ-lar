@@ -57,7 +57,11 @@ See [upstream.md](upstream.md), U10.
      `queue E[N]`, are an instance (7) sized in the text.
    - *Memory pools*: KV blocks, Request slots: a memory pool, dropped on
      an engine, declared there (7) by a name its queue has not got.
-   - *Arrows*: Call, dropped on the arrival or a station: an arrow from
+   - *Routing*: Router, dropped on an engine: each call to it chooses a
+     member of its queue (`route` in `edit.ts`; a plain queue becomes a
+     family of one, as Make instance does, NIC or not), by the least
+     work, until the router is given its keys (8).
+   - *Arrows*: Call, dropped on the client or a station: an arrow from
      there follows the pointer, and the station or draft clicked next is
      its end (5). Esc, or a click on the empty canvas, drops it.
    - *KV transfer*: dropped on the source's engine, the reader clicked
@@ -70,7 +74,16 @@ See [upstream.md](upstream.md), U10.
    (`data-node`, `data-from`, `data-to`, `data-copy`), the kinds off the IR,
    the layout is serQ's with its columns and rows kept and tightened
    (`flow/graph.ts`). Each node has an input on its left and an output on
-   its right; the arrival only an output, the exit only an input. An
+   its right. The client is the workload, one a program: serQ's arrival
+   arrow leaves its right, and each exit (`out`) comes back into it from
+   underneath, a reply: a session at a tool, thinking, waits under it.
+   serQ's decision is the router, an icon with its words (`choose j, i`).
+   Everything else is the server, one a program, in a dashed frame.
+   (serQ's figure draws the arrival and the `out`s apart and no frame:
+   stopgaps, upstream.md U20.) A NIC stands on the edge of its queue's
+   panel, half out of it, an add-on on the side its KV leaves (a
+   source's right) or comes in by (a reader's left); with no panel, on
+   its queue's card. An
    instance serQ draws as a panel (`prefill instance P[i]`: the engine,
    its NIC) is a box here, with serQ's words over it, that holds its
    members: dragged, it moves them; a member dragged stays inside it, and
@@ -132,6 +145,22 @@ See [upstream.md](upstream.md), U10.
    queue fifo; }`, or `kv cap N;` in the device and `pool kv on gpu { … }`);
    KV blocks only where the device has none, since serQ takes one KV pool
    a device.
+8. **The inspector** (the right of the Flow tab: the router or the client
+   clicked). Each property is a piece of the text serQ's outline places
+   (`chooses`, `workload_items`, upstream.md U21), shown as written and
+   written back on Enter or leaving the field (`web/src/inspect.ts`).
+   The router: for each `choose`, the family it picks a member of (`to`:
+   another family rewrites its count, its calls and its keys), and its
+   keys in order, each typed, picked from ready-made ones (least work, at
+   random, fewest queued or holding on a pool, prefix cached on a KV
+   pool), removed, or added; and the calls it makes. The client: its
+   arrival process, what each session starts with, what each turn draws,
+   what each request sends, and what comes between turns (a tool's time);
+   for a pair, the workload file's (its outline's `workload_file`), and the
+   edit goes into that file.
+   With a serQ whose outline places neither, it shows serQ's words and
+   sends the edit to Code. Which keys are offered is a stopgap: serQ #645
+   asks serQ to say which a `choose` can take.
 
 `scripts/check-edits.sh` runs every edit on serQ's examples and asks serQ
 to link and draw the result.

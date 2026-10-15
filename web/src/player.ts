@@ -4,7 +4,7 @@
 // any other stage (a NIC, a tool). A ring marks the requests in the forward
 // pass an engine is running, and the engine's budget bar shows that pass.
 // A session on a stage the deployment does not draw (the workload's tool)
-// parks, dimmed, past the exit.
+// parks, dimmed, at the exit's end: on the Flow view, under the client.
 //
 // A session is where its latest run put it: in that run's first drawn
 // station (a transfer over two NICs stages at the first). A wait moves it
@@ -59,7 +59,7 @@ export interface Mover {
   where: Where;
   /** The figure node (a station, or a decision `#k`) it was last placed at. */
   node?: string;
-  /** At the workload (a tool), not in the deployment: parked past the exit. */
+  /** At the workload (a tool), not in the deployment: parked at the exit's end (under the client). */
   away: boolean;
   path: Path | null;
   /** Drawn position, eased toward the target each frame unless on a path. */

@@ -11,7 +11,7 @@ import { points } from "../anchors";
 import { family } from "../events";
 import type { Draft } from "../edit";
 
-export type NodeKind = "source" | "sink" | "engine" | "nic" | "station" | "delay" | "decision" | "draft";
+export type NodeKind = "client" | "engine" | "nic" | "station" | "delay" | "decision" | "draft";
 
 export interface GraphNode {
   id: string;
@@ -29,6 +29,9 @@ export interface GraphNode {
    * note under it (`tokens cap 8192`, a NIC's rate, a delay's `~exp(3)`). */
   title?: string;
   note?: string;
+  /** A NIC's side of its queue's panel (or card), where it stands half out
+   * of it: the side its KV leaves by (a source's right) or comes in by. */
+  dock?: "left" | "right";
 }
 
 /** A memory pool, as serQ's IR declares it. */
@@ -91,10 +94,12 @@ interface IrPool {
   block: number | null;
 }
 
-/** Where sessions arrive from, and where they leave to: no stage of serQ's,
- * the ends of the figure's arrival and exit arrows. */
-export const SOURCE = "arrival";
-export const SINK = "exit";
+/** The client: the workload, where sessions come from and where each reply
+ * goes back to; no stage of serQ's, but the ends of the figure's arrival and
+ * exit arrows. serQ takes one workload a program, so there is one client.
+ * Stopgap: serQ's figure draws the arrival and an `out` apart, with no glyph
+ * for the workload; docs/upstream.md U20 asks it for the client. */
+export const CLIENT = "client";
 
 /** The graph of the figure in `svg` (on the page, so that it has a layout), with `drafts` beside it. */
 export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrPool[] }, drafts: Draft[]): Graph {
@@ -105,11 +110,9 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrP
     kinds.set(s.name, { kind: k, count: (was?.count ?? 0) + 1 });
   }
   const nodes: GraphNode[] = [];
-  let right = 0;
   for (const g of svg.querySelectorAll<SVGGElement>("g[data-node]")) {
     const id = g.dataset.node!;
     const b = g.getBBox();
-    right = Math.max(right, b.x + b.width);
     const stage = g.dataset.stage;
     if (stage === undefined) {
       nodes.push({ id, kind: "decision", label: label(g) ?? "decide", sub: "", x: b.x + b.width / 2, y: b.y + b.height / 2 });
@@ -125,18 +128,14 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrP
   }
   const edges: GraphEdge[] = [];
   const arrival = svg.querySelector<SVGPathElement>('path[data-role="arrival"]');
-  if (arrival?.dataset.to) {
-    const p = points(arrival)[0] ?? { x: 0, y: 0 };
-    nodes.push({ id: SOURCE, kind: "source", label: "arrival", sub: "sessions arrive", x: p.x, y: p.y });
-    edges.push({ id: `${SOURCE}>${arrival.dataset.to}`, from: SOURCE, to: arrival.dataset.to, kind: "arrival" });
-  }
   const exits = [...svg.querySelectorAll<SVGPathElement>('path[data-role="exit"]')];
-  if (exits.length) {
-    const ends = exits.map((e) => points(e).at(-1)!).filter(Boolean);
-    const y = ends.reduce((s, p) => s + p.y, 0) / Math.max(1, ends.length);
-    nodes.push({ id: SINK, kind: "sink", label: "out", sub: "sessions leave", x: Math.max(right, ...ends.map((p) => p.x)) + 40, y });
-    for (const e of exits) if (e.dataset.from) edges.push({ id: `${e.dataset.from}>${SINK}`, from: e.dataset.from, to: SINK, kind: "exit" });
+  if (arrival?.dataset.to || exits.length) {
+    const p = (arrival && points(arrival)[0]) ?? { x: 0, y: 0 };
+    nodes.push({ id: CLIENT, kind: "client", label: "client", sub: "the workload", x: p.x, y: p.y });
   }
+  if (arrival?.dataset.to) edges.push({ id: `${CLIENT}>${arrival.dataset.to}`, from: CLIENT, to: arrival.dataset.to, kind: "arrival" });
+  // each reply back to the client: its turn is over, and its session thinks, or leaves
+  for (const e of exits) if (e.dataset.from) edges.push({ id: `${e.dataset.from}>${CLIENT}`, from: e.dataset.from, to: CLIENT, kind: "exit" });
   for (const p of svg.querySelectorAll<SVGPathElement>('path[data-role="flow"]')) {
     const from = p.dataset.from!;
     const to = p.dataset.to!;
@@ -149,6 +148,7 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrP
     if (from && to && !edges.some((e) => e.from === from && e.to === to))
       edges.push({ id: `${from}>${to}`, from, to, kind: "copy", copy: r.dataset.copy as "pull" | "push", poster: r.dataset.poster, bracket: true });
   }
+  for (const n of nodes) if (n.kind === "nic") n.dock = edges.some((e) => e.kind === "copy" && e.to === n.id) ? "left" : "right";
   poolsOf(svg, ir.pools ?? [], nodes);
   const instances = instancesOf(svg, nodes);
   wordsOf(svg, nodes, edges);
@@ -202,7 +202,7 @@ export function nicOf(id: string): string {
 }
 
 /** The queue a NIC is of, by the figure's names: `P` for `P.nic`, `P[1]` for `P.nic[1]`. */
-function queueOfNic(id: string): string | undefined {
+export function queueOfNic(id: string): string | undefined {
   const m = /^(.*)\.nic(\[\d+\])?$/.exec(id);
   return m ? m[1] + (m[2] ?? "") : undefined;
 }
@@ -294,7 +294,7 @@ function wordsOf(svg: SVGSVGElement, nodes: GraphNode[], edges: GraphEdge[]) {
   // the rest: the nearest arrow's, if one is near (the arrival's process, a condition, an exit's, a copy's)
   const arrows = [...svg.querySelectorAll<SVGPathElement>("path[data-role]")].map((el) => {
     const r = el.dataset.role;
-    const id = r === "arrival" ? `${SOURCE}>${el.dataset.to}` : r === "exit" ? `${el.dataset.from}>${SINK}` : `${el.dataset.from}>${el.dataset.to}`;
+    const id = r === "arrival" ? `${CLIENT}>${el.dataset.to}` : r === "exit" ? `${el.dataset.from}>${CLIENT}` : `${el.dataset.from}>${el.dataset.to}`;
     return { id, pts: points(el) };
   });
   const near = new Map<string, Words[]>();
@@ -308,8 +308,8 @@ function wordsOf(svg: SVGSVGElement, nodes: GraphNode[], edges: GraphEdge[]) {
   }
   for (const [id, ws] of near) {
     const words = ws.sort((a, b) => a.y - b.y || a.x - b.x).map((w) => w.text);
-    if (id.startsWith(`${SOURCE}>`)) {
-      const src = nodes.find((n) => n.id === SOURCE);
+    if (id.startsWith(`${CLIENT}>`)) {
+      const src = nodes.find((n) => n.id === CLIENT);
       if (src) src.sub = words.join(" · ");
       continue;
     }
@@ -338,10 +338,9 @@ const ROW = 90;
 
 /** serQ's arrangement, tightened: its columns and rows kept in order, a
  * node's width apart. serQ spaces its figure for pools and panels the Edit
- * view does not draw. The arrival goes left of what it reaches, the exit
- * right of everything, each on the row of what it joins. */
+ * view does not draw. The client goes left of what it sends to, on its row. */
 function compact(nodes: GraphNode[], edges: GraphEdge[]) {
-  const placed = nodes.filter((n) => n.kind !== "source" && n.kind !== "sink");
+  const placed = nodes.filter((n) => n.kind !== "client");
   const index = (vals: number[], snap: number) => {
     const keys = [...new Set(vals.map((v) => Math.round(v / snap)))].sort((a, b) => a - b);
     return (v: number) => keys.indexOf(Math.round(v / snap));
@@ -359,17 +358,11 @@ function compact(nodes: GraphNode[], edges: GraphEdge[]) {
     at.set(n.id, { x: c * COL, y: r * ROW });
   }
   for (const n of placed) Object.assign(n, at.get(n.id));
-  const lastCol = Math.max(0, ...placed.map((n) => n.x));
   for (const n of nodes) {
-    if (n.kind === "source") {
-      const to = at.get(edges.find((e) => e.from === n.id)?.to ?? "");
-      n.x = -COL;
-      n.y = to?.y ?? 0;
-    } else if (n.kind === "sink") {
-      const ys = edges.filter((e) => e.to === n.id).map((e) => at.get(e.from)?.y ?? 0).sort((a, b) => a - b);
-      n.x = lastCol + COL;
-      n.y = ys.length ? ys[Math.floor(ys.length / 2)] : 0;
-    }
+    if (n.kind !== "client") continue;
+    const to = at.get(edges.find((e) => e.from === n.id)?.to ?? "");
+    n.x = -COL;
+    n.y = to?.y ?? 0;
   }
 }
 

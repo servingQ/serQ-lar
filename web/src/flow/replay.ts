@@ -11,7 +11,7 @@
 // are in flow units over `SCALE`, and the view multiplies them back.
 
 import type { Anchors, Bar, Box, Point } from "../anchors";
-import { type Graph, SINK, SOURCE } from "./graph";
+import { CLIENT, type Graph } from "./graph";
 
 /** A node as the Flow view has it now, in the flow's coordinates: its card,
  * the lane its sessions sit in, and its budget bar. */
@@ -87,11 +87,11 @@ export function flowAnchors(el: HTMLElement, graph: Graph, placed: Map<string, P
     const path = paths.get(e.id);
     if (!path || e.bracket) continue;
     const pts = sample(path);
-    if (e.from === SOURCE) arrival = { to: e.to, pts };
-    else if (e.to === SINK) {
-      // on through the out node: a session leaves, and parks, past it
-      const out = nodes.get(SINK);
-      if (out) pts.push({ x: out.x + out.w + 4, y: out.y + out.h / 2 });
+    if (e.from === CLIENT) arrival = { to: e.to, pts };
+    else if (e.to === CLIENT) {
+      // back into the client: a session at a tool, thinking, parks under its card
+      const c = nodes.get(CLIENT);
+      if (c) pts.push({ x: c.x - 6, y: c.y + c.h + 8 });
       exits.push({ from: e.from, pts });
     } else {
       const list = flows.get(e.from) ?? [];
