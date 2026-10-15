@@ -702,7 +702,7 @@ dashboard.onAddGauges = (lines) => {
 {
   const v = $<HTMLAnchorElement>("version");
   const sha = /-g([0-9a-f]+)$/.exec(__SERQ_REF__)?.[1];
-  v.textContent = `serQ ${__SERQ_REF__} · wasm`;
+  v.textContent = `serQ ${__SERQ_REF__}`;
   v.href = `https://github.com/servingQ/serQ/tree/${sha ?? __SERQ_REF__}`;
 }
 drawer.ask({ cmd: "vocabulary" }).then((r) => {
