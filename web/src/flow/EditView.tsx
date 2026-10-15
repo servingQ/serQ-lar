@@ -218,7 +218,7 @@ function SerqNode({ id, data, parentId, selected }: NodeProps<SerqNodeT>) {
         <NodeToolbar isVisible={!!selected} position={Position.Top} className="ftools">
           {role && <RoleSwitch id={id} role={role} />}
           {n.kind === "engine" && !parentId && (
-            <button onClick={() => host.instance(id)} title={`Bundle ${id} and ${id}.nic as an instance: ${id} becomes a family its calls choose a member of`}>
+            <button onClick={() => host.instance(id)} title={`Make ${id} an instance (its engine, NIC and pools): ${id} becomes a family its calls choose a member of`}>
               ⊞ Make instance
             </button>
           )}
@@ -875,7 +875,6 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
   const memory = useCallback(
     (pool: "blocks" | "slots", on: SerqNodeT) => {
       const n = on.data.node;
-      if (pool === "blocks" && n.pools?.some((q) => q.kind === "blocks")) return host.say(`${n.label}'s device has its KV pool: serQ takes one a device.`, true);
       const stem = pool === "blocks" ? "kv" : "waitq";
       const taken = new Set((n.pools ?? []).map((q) => q.name));
       let name = stem;

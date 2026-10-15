@@ -140,8 +140,8 @@ const queueDraft = (src: string, role: snip.Own, stem: string): Draft => {
   const src = readFileSync(`${process.env.SERQ_DIR}/examples/pd-disaggregation/vllm_nixl_push.sq`, "utf8");
   const o = ol(src);
   check("push: push → pull", src, toggle(src, o, o.relations[0]), { text: ["kvt.nixl_pull (P, D"] });
-  // P and D are one queue each, with a NIC, in no instance: P made one, and D with it (the copy joins two families)
-  check("push: P an instance, and D", src, instance(src, o, "P"), { stages: ["P", "P.nic", "D", "D.nic"], text: ["queue P[1] : prefill", "queue D[1] : decode", "fork { P[k].prefill (prompt); }", "from P[k];", "D[m].decode"], instances: 2 });
+  // P and D are one queue each, with a NIC, in no instance: P made one; D stays a single queue (serQ copies between a family and a queue, #664)
+  check("push: P an instance, D as it is", src, instance(src, o, "P"), { stages: ["P", "P.nic", "D", "D.nic"], text: ["queue P[1] : prefill", "queue D : decode", "fork { P[k].prefill (prompt); }", "D.decode (prompt) from P[k];"], instances: 1 });
 }
 
 // a memory pool declared, with the capacity it is sized by; a second KV pool on one device is refused
@@ -149,7 +149,8 @@ const queueDraft = (src: string, role: snip.Own, stem: string): Draft => {
   const l = example("llmd_nixl_pull");
   check("llmd: P's pool of waitq slots", l, declarePool(l, ol(l), "P", "waitq", "slots", "8"), { stages: ["P"], text: ["waitq cap 8;", "pool waitq on P { queue fifo; }"] });
   check("llmd: a second KV pool on P's device", l, declarePool(l, ol(l), "P", "kv2", "blocks", "1000"), { refused: /both on/ });
-  check("llmd: a pool P has", l, declarePool(l, ol(l), "P", "kv", "blocks", "1000"), { refused: /already/ });
+  // serQ's refusal, not the page's
+  check("llmd: a pool P has", l, declarePool(l, ol(l), "P", "kv", "blocks", "1000"), { refused: /twice/ });
   const v = example("vllm");
   const e = connect(v, ol(v), { kind: "arrival" }, { kind: "draft", draft: queueDraft(v, "agg", "D") });
   if (typeof e !== "string") {
@@ -158,7 +159,7 @@ const queueDraft = (src: string, role: snip.Own, stem: string): Draft => {
   }
 }
 
-// an instance refused: one already, no queue, a queue with no NIC
+// an instance refused: one already, no queue; a queue with no NIC is one too
 {
   const l = example("llmd_nixl_pull");
   check("llmd: D is an instance already", l, instance(l, ol(l), "D"), { refused: /already/ });
@@ -168,7 +169,8 @@ const queueDraft = (src: string, role: snip.Own, stem: string): Draft => {
   const e = connect(src, ol(src), { kind: "arrival" }, { kind: "draft", draft: queueDraft(src, "prefill", "P") });
   if (typeof e !== "string") {
     src = apply(src, e);
-    check("palette: P without a NIC", src, instance(src, ol(src), "P"), { refused: /no NIC/ });
+    // no NIC: still an instance, its engine and pools (serQ #692)
+    check("palette: P without a NIC an instance", src, instance(src, ol(src), "P"), { stages: ["P"], text: ["queue P[1]", "in 1 by (work(P["] });
     // the router dropped on it: no NIC wanted, P a family of one its call chooses from
     check("router: P a family of one", src, route(src, ol(src), "P"), { stages: ["P"], text: ["in 1 by (work(P["] });
   }

@@ -463,5 +463,18 @@ the inspector offers each whose one parameter is a stage or a pool, on
 the chosen member, and no longer knows which pool is KV. A push needs no
 fork after all ([#660](https://github.com/servingQ/serQ/pull/660)), and a
 copy's ends need not both be families
-([#664](https://github.com/servingQ/serQ/pull/664)): serq-lar's edits
-still write both, and can stop.
+([#664](https://github.com/servingQ/serQ/pull/664)): `route` and Make
+instance make only the queue they are given a family of one, and Make
+instance no longer asks for a NIC (a `choose` is an instance of its own,
+[#692](https://github.com/servingQ/serQ/pull/692)).
+
+And the page no longer pre-checks serQ's rules: every edit from the figure
+is compiled before it is made, and one serQ refuses is not made, its
+refusal (`error[E-…]`) said instead. Gone: "a reader has one source"
+(`E-reader-two-sources`), "one KV pool a device" (`E-device-two-pools`),
+"a pool the queue has" (serQ's "a resource … twice"). Where a pool and its
+capacity are written is read off serQ's outline (`engines`, `devices` and
+their `caps`, [#679](https://github.com/servingQ/serQ/pull/679)) rather
+than matched in the text. Left: retyping an engine (B5, its entry's shape:
+serQ's `queue_roles`, [#683](https://github.com/servingQ/serQ/pull/683))
+and what a part may be dropped on (B6, no query yet).

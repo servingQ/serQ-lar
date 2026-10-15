@@ -76,6 +76,29 @@ export interface WorkloadItem {
   range: Range;
 }
 
+/** A capacity declared (`kv cap 160000;`): its name where written, and the pool on it, if any. */
+export interface Cap {
+  name: string;
+  range: Range;
+  pool: string | null;
+  admitted_by: string | null;
+}
+
+/** A device, as a pool's `on` names it (`D.gpu`), the engine on it, and its KV pool. */
+export interface Device {
+  name: string;
+  engine: string | null;
+  memory: string | null;
+  caps: Cap[];
+}
+
+/** An engine and the device it runs on. */
+export interface Engine {
+  name: string;
+  device: string | null;
+  caps: Cap[];
+}
+
 /** The server's signature: what a request carries, and its reply. */
 export interface Signature {
   params: { name: string; hidden: boolean }[];
@@ -97,6 +120,9 @@ export interface Outline {
   /** Absent before serQ's outline said them (docs/upstream.md U21). */
   chooses?: Choose[];
   workload_items?: WorkloadItem[];
+  /** Every device and engine, their capacities and the pool on each (serQ #679). */
+  devices?: Device[];
+  engines?: Engine[];
   /** A pair's workload file's outline, its ranges into that file's text. */
   workload_file?: Outline;
 }
