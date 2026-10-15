@@ -302,9 +302,28 @@ function CodeButton({ id }: { id: string }) {
   );
 }
 
+/** Whether the sidebar of parts is folded, as the viewer left it. */
+const FOLDED = "serq-lar:parts-folded";
+
 /** The sidebar of parts, by what they are: each dragged and dropped onto
- * the canvas (it does nothing clicked). */
+ * the canvas (it does nothing clicked). Folded, it is a rail of their icons,
+ * still dragged from. */
 function Parts() {
+  const [folded, setFolded] = useState(() => {
+    try {
+      return localStorage.getItem(FOLDED) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const fold = () => {
+    setFolded(!folded);
+    try {
+      localStorage.setItem(FOLDED, folded ? "0" : "1");
+    } catch {
+      // a private window: it stays as it is for as long as the page
+    }
+  };
   type Item = { key: string; label: string; hint: string; title: string; tool: Tool };
   const groups: { title: string; items: Item[] }[] = [
     {
@@ -339,7 +358,19 @@ function Parts() {
     },
   ];
   return (
-    <aside className="fparts" aria-label="Parts: drag one onto the canvas">
+    <aside className={`fparts${folded ? " folded" : ""}`} aria-label="Parts: drag one onto the canvas">
+      <header>
+        <h3 className="eyebrow">Parts</h3>
+        <button
+          className="ffold"
+          onClick={fold}
+          aria-expanded={!folded}
+          title={folded ? "Open the parts" : "Fold the parts into a rail of icons"}
+          aria-label={folded ? "Open the parts" : "Fold the parts"}
+        >
+          {folded ? "»" : "«"}
+        </button>
+      </header>
       {groups.map((g) => (
         <section key={g.title}>
           <h3 className="eyebrow">{g.title}</h3>
@@ -348,7 +379,7 @@ function Parts() {
               key={p.label}
               className={`fpart k-${p.key}`}
               draggable
-              title={`${p.title}. Drag it ${p.hint === "canvas or a station" ? "onto the canvas, or onto a station to call it from there" : p.hint === "on an engine" ? "onto an engine" : "onto a station, then click the other end"}.`}
+              title={`${folded ? `${p.label}: ` : ""}${p.title}. Drag it ${p.hint === "canvas or a station" ? "onto the canvas, or onto a station to call it from there" : p.hint === "on an engine" ? "onto an engine" : "onto a station, then click the other end"}.`}
               onDragStart={(e) => {
                 e.dataTransfer.setData(PART, JSON.stringify(p.tool));
                 e.dataTransfer.effectAllowed = "copy";
