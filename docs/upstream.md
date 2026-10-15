@@ -428,7 +428,7 @@ Issue draft:
 > Before: `<path data-role="arrival" data-to="#0">`, `<path data-role="exit" data-from="D">` … `out`
 > After: `<g data-node="client" data-role="client">`(도착은 client에서 나가고, exit는 응답으로 client에 돌아온다: `data-to="client"`), `<rect data-role="server">`(client를 뺀 전부를 감싸는 틀). tool 시간과 think 시간은 client에 있다.
 
-## U21. A router's choice and the workload's statements in the outline — landed for one file
+## U21. A router's choice and the workload's statements in the outline — landed
 
 The inspector edits a router's keys and the client's properties where
 the text writes them. serQ
@@ -441,8 +441,8 @@ deployment's outline, at the joined text's offsets: serQ
 [#650](https://github.com/servingQ/serQ/issues/650),
 [#651](https://github.com/servingQ/serQ/pull/651) move them into the
 workload file's. `crates/serq-wasm` hands the workload file's outline
-under `workload_file`. Until a tag has #651, a pair's client inspector
-finds no statements and sends the edit to Code.
+under `workload_file` (v0.1.6-alpha.10 has #651): the client's inspector
+edits the workload file, the router's the deployment.
 
 ## U22. The rules serq-lar knows in serQ's place
 
