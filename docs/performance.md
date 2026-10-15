@@ -26,9 +26,12 @@ No `wasm-opt` pass yet; it typically takes another 10–20 %.
 | pd-disaggregation/llmd_nixl_pull | 18 473 | 3–5 ms | 5.0 s | 3.2 s | 1.6 |
 | engines/sglang | 16 948 | 1 ms | 3.3 s | 2.2 s | 1.5 |
 | single-turn/fastertransformer | 7 700 | <1 ms | 16.5 s ¹ | 9.5 s | 1.7 |
-| single-turn/vllm_single_turn | 10 703 | <1 ms | 2.3 s ¹ | 1.0 s | 2.3 |
+| multi-turn/vllm:single_turn ² | 10 703 | <1 ms | 2.3 s ¹ | 1.0 s | 2.3 |
 
 ¹ measured at opt-level "s"; the others at 3, which is ~1.5× faster.
+² measured as `single-turn/vllm_single_turn`, which serQ #694 merged into
+`multi-turn/vllm.sq` under `workloads/single_turn.sq`: the same IR
+(`node scripts/bench.mjs 3600 "$SERQ/examples/multi-turn/vllm.sq:$SERQ/examples/workloads/single_turn.sq"`).
 
 In Playwright 1.55's headless Chromium (build 1187, same box), the page's
 "Run report" on `vllm.sq` at a 600 s horizon: 209–232 ms, in the Web Worker,

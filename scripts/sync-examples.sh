@@ -13,7 +13,7 @@ mkdir -p "$out/deployments" "$out/workloads"
 programs=(
   multi-turn/vllm.sq multi-turn/replica.sq multi-turn/routing.sq
   multi-turn/thunderagent.sq pd-disaggregation/llmd_nixl_pull.sq
-  engines/sglang.sq single-turn/mg1.sq single-turn/vllm_single_turn.sq
+  engines/sglang.sq single-turn/mg1.sq
 )
 for f in "${programs[@]}"; do
   cp "$serq/examples/$f" "$out/deployments/$(basename "$f")"
@@ -28,7 +28,9 @@ node -e '
   const stem = (p) => p.replace(/^.*\//, "").replace(/\.sq$/, "");
   const ours = {};
   for (const p of programs) {
-    const w = all[`examples/${p}`];
+    // one workload, or several, the first the one it starts with
+    const listed = all[`examples/${p}`];
+    const w = Array.isArray(listed) ? listed[0] : listed;
     if (!w) throw new Error(`examples/pairs.json pairs no workload with examples/${p}`);
     if (!require("fs").existsSync(`${out.replace(/pairs\.json$/, "")}workloads/${stem(w)}.sq`))
       throw new Error(`${w}, the workload of examples/${p}, reads a trace: the page cannot run it`);
