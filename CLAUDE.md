@@ -60,6 +60,8 @@ phone; a page error or a stuck "running…" status is a failure.
 Copilot and CodeRabbit review a pull request. CodeRabbit is set by
 `.coderabbit.yaml`: it writes in Korean, reads this file as it stands for
 the rules (the config copies none of them), and skips the lockfiles. It
-reviews each commit once, so a force-push starts its review over;
-`@coderabbitai review` asks for one by hand. Each finding of either is
-answered on the pull request, in Korean: fixed, or why not.
+reviews again on each push, the commits since its last review, and pauses
+after five reviewed commits: `@coderabbitai review` asks for one while it
+is paused, `@coderabbitai full review` reviews the whole pull request
+again. Each finding of either is answered on the pull request, in Korean:
+fixed, or why not.
