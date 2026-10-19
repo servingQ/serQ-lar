@@ -54,3 +54,12 @@ names them), `dpkg -x` them into the scratchpad, set `LD_LIBRARY_PATH` to
 their `usr/lib/x86_64-linux-gnu`, and launch `playwright-core` with that
 `executablePath` against `npx vite preview`. Check light, dark and a 390 px
 phone; a page error or a stuck "running…" status is a failure.
+
+## Reviews
+
+Copilot and CodeRabbit review a pull request. CodeRabbit is set by
+`.coderabbit.yaml`: it writes in Korean, reads this file as it stands for
+the rules (the config copies none of them), and skips the lockfiles. It
+reviews each commit once, so a force-push starts its review over;
+`@coderabbitai review` asks for one by hand. Each finding of either is
+answered on the pull request, in Korean: fixed, or why not.
