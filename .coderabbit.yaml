@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit's review of serq-lar: in Korean, as the PRs are written. The
+# rules are CLAUDE.md's, read as it stands, not copied here.
+language: ko-KR
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!web/package-lock.json"
+    - "!Cargo.lock"
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "**/CLAUDE.md"
+chat:
+  auto_reply: true
