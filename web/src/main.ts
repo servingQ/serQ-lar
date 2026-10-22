@@ -3,7 +3,7 @@ import { EditorView } from "@codemirror/view";
 import { anchors, type Anchors } from "./anchors";
 import { applyEdits, Compose } from "./compose";
 import type { Draft, Edit, From, To } from "./edit";
-import { clientOf, routerOf, type SerqFunction } from "./inspect";
+import { clientOf, gatewayOf, type SerqFunction } from "./inspect";
 import { Dashboard, withGauges } from "./dashboard";
 import { Editor } from "./editor";
 import { CLIENT, graphOf, draftId, type Graph } from "./flow/graph";
@@ -426,9 +426,12 @@ const mainEl = $<HTMLElement>("main");
 const tabButtons = [...document.querySelectorAll<HTMLButtonElement>(".tabbar button[data-tab]")];
 const tabInk = document.querySelector<HTMLSpanElement>(".tab-ink")!;
 
-/** A node of the Edit view as an end of an arrow: the arrival (or the router's decision, the start of the way), a station, or a draft. */
+/** The gateway queue a node of the Edit view draws (`gw` for `gw.route`), if it draws one. */
+const gatewayOfNode = (id: string) => (shownGraph?.nodes.some((n) => n.id === id && n.kind === "gateway") ? id.replace(/\.route$/, "") : undefined);
+
+/** A node of the Edit view as an end of an arrow: the arrival (or a decision or a gateway on the way, its start), a station, or a draft. */
 function endOf(id: string): { from?: From; to?: To; nic?: Draft } {
-  if (id === CLIENT || id.startsWith("#")) return { from: { kind: "arrival" } };
+  if (id === CLIENT || id.startsWith("#") || gatewayOfNode(id)) return { from: { kind: "arrival" } };
   const d = compose.draftList.find((_, i) => draftId(i) === id);
   if (d) return d.kind === "nic" ? { nic: d } : { to: { kind: "draft", draft: d } };
   // a member of a stacked instance (`P[1]`) is written as its array
@@ -439,7 +442,7 @@ function endOf(id: string): { from?: From; to?: To; nic?: Draft } {
 const editHost: EditHost = {
   connect(from, to) {
     if (to === CLIENT) return void sayIt("A reply goes back to the client where its way ends: serQ draws it, nothing to connect.", true);
-    if (to.startsWith("#")) return void sayIt("An arrow ends at a station or a draft.", true);
+    if (to.startsWith("#") || gatewayOfNode(to)) return void sayIt("An arrow ends at a station or a draft.", true);
     const a = endOf(from);
     const b = endOf(to);
     if (!b.to) return void sayIt("A NIC's draft starts a copy: draw its arrow to the queue that reads.", true);
@@ -447,7 +450,7 @@ const editHost: EditHost = {
     compose.link(a.from ?? null, b.to, a.nic);
   },
   select(id) {
-    const station = id && !id.startsWith("#") && id !== CLIENT && !id.startsWith("draft:") ? family(id) : null;
+    const station = id && !id.startsWith("#") && !gatewayOfNode(id) && !id.startsWith("draft:") ? family(id) : null;
     // its part of the run's report, under the view
     selected = station ? { kind: "stage", name: station } : null;
     showReport();
@@ -486,14 +489,16 @@ const editHost: EditHost = {
       const ol = currentOutline.workload_file ?? { ...currentOutline, workload_items: undefined };
       return clientOf(ol, workload, words, (edits: Edit[]) => workloadEditor.apply(edits), currentOutline.signature);
     }
-    if (!id.startsWith("#")) return null;
-    return routerOf(currentOutline, src, serqFunctions, (edits: Edit[]) => editor.apply(edits));
+    const gw = gatewayOfNode(id);
+    if (!gw && !id.startsWith("#")) return null;
+    return gatewayOf(currentOutline, src, serqFunctions, (edits: Edit[]) => editor.apply(edits), gw);
   },
   code(id) {
     // the client is written in the workload file
     const ed = id === CLIENT ? workloadEditor : editor;
     const ol = id === CLIENT ? currentOutline?.workload_file : currentOutline;
-    const at = ol && codeOf(ol, family(id));
+    const gw = gatewayOfNode(id);
+    const at = ol && (gw ? (ol.routes.find((r) => r.gateway === gw)?.range ?? null) : codeOf(ol, family(id)));
     if (!at) return void sayIt(`${id} is not written as such in the text: serQ's outline does not place it.`, true);
     setTab("code");
     ed.view.dispatch({ selection: { anchor: at[0], head: at[1] }, effects: EditorView.scrollIntoView(at[0], { y: "center" }) });
@@ -502,11 +507,11 @@ const editHost: EditHost = {
 };
 
 /** Where a node of the Edit view is written: the client's workload, the
- * router's first choice (else its gateway's route, else the server), a
- * queue, its NIC, or a declaration (a delay). */
+ * server's decision (its first choose, else the server), a queue, its NIC,
+ * or a declaration (a delay). A gateway is its `route` (editHost.code). */
 function codeOf(ol: Outline, id: string): [number, number] | null {
   if (id === CLIENT) return ol.workload;
-  if (id.startsWith("#")) return ol.chooses?.find((c) => c.block !== "entry")?.range ?? ol.routes[0]?.range ?? ol.server?.range ?? null;
+  if (id.startsWith("#")) return ol.chooses?.find((c) => c.block === "server")?.range ?? ol.server?.range ?? null;
   const nic = id.endsWith(".nic");
   const q = ol.queues.find((x) => x.name === id.replace(/\.nic$/, ""));
   if (q) return (nic && q.members.find((m) => m.kind === "nic")?.range) || q.range;
@@ -710,7 +715,7 @@ drawer.ask({ cmd: "vocabulary" }).then((r) => {
   editor.vocabulary = JSON.parse(r.value);
   workloadEditor.vocabulary = JSON.parse(r.value);
 });
-// the functions a router's keys may call, serQ's
+// the functions a gateway's keys may call, serQ's
 drawer.ask({ cmd: "functions" }).then((r) => {
   if (r.ok) serqFunctions = JSON.parse(r.value) as SerqFunction[];
 });

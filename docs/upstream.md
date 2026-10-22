@@ -409,24 +409,32 @@ to the wrong place without an error. Issue draft:
 > ```
 > `figure::Item::Text`에 무엇의 글자인지(노드, 풀, 화살표, 인스턴스, 도착)와 역할(name, note, label)을 담는 필드를 두고, `deployment.rs`의 `f.text`/`f.note` 호출(20곳)이 채우며, `svg.rs`가 drum·화살표와 같은 이름의 `data-*`로 적는다. U15(인스턴스 패널의 `data-nodes`)와 함께 하면 Flow view가 그림을 위치로 읽는 곳이 없어진다. `tests/draw.rs`에 예제마다 모든 `<text>`가 그림의 노드·풀·화살표를 가리키는지 확인하는 검사를 둔다.
 
-## U20. The client and the server in the deployment view
+## U20. The client, the server and the gateway in the deployment view — landed
 
-The Flow view draws the workload as one client and the deployment as one
-server, since serQ takes one `workload` and one `server` a program
-(`duplicate workload`, `duplicate server`). serQ's figure draws the
-arrival arrow from the page's edge and each exit to an `out` of its own,
-and nothing around the server. Stopgaps in `web/src/flow/graph.ts`
-(`CLIENT`: the arrival and the exits joined in one node, each exit a
-reply back into it) and `web/src/flow/EditView.tsx` (`ServerNode`: a
-frame around all but the client). Extends U3's "no source and sink".
-Issue draft:
+serQ [#705](https://github.com/servingQ/serQ/issues/705) /
+[#707](https://github.com/servingQ/serQ/pull/707) and
+[#706](https://github.com/servingQ/serQ/issues/706) /
+[#708](https://github.com/servingQ/serQ/pull/708), in v0.1.7-alpha.1.
+The figure draws the workload as one client (`<g data-node="#client"
+data-role="client">`) and a frame around the rest (`<rect
+data-role="server">`). Every arrival leaves the client and every exit
+comes back to it (`data-from`, `data-to`). A gateway's route is a node of
+its own (`gw.route`, `data-role="gateway"`). A station where the route
+ends replies to it (`data-role="reply"`), and the request leaves by it.
+A server's branch before `gw.route();` keeps its own diamond
+(`data-role="decision"`), and a pool's tick says so (`data-role="tick"`).
 
-> **배포 그림에 client와 server를 그리기**
->
-> 배포 그림은 도착 화살표를 그림 가장자리에서 시작하고, exit마다 `out`으로 끝낸다. 워크로드(client)도, server의 경계도 그리지 않는다. 그런데 serQ는 프로그램마다 `workload`와 `server`를 하나씩만 받으므로(`duplicate workload`, `duplicate server`) 둘 다 그림의 한 자리로 그릴 수 있다.
->
-> Before: `<path data-role="arrival" data-to="#0">`, `<path data-role="exit" data-from="D">` … `out`
-> After: `<g data-node="client" data-role="client">`(도착은 client에서 나가고, exit는 응답으로 client에 돌아온다: `data-to="client"`), `<rect data-role="server">`(client를 뺀 전부를 감싸는 틀). tool 시간과 think 시간은 client에 있다.
+`web/src/flow/graph.ts` reads these as serQ writes them. The page's own
+client node, its `exitId` (exits sent back into the first decision) and
+its diamond-or-card test are gone. The Flow view still draws its own
+server frame (`ServerNode`) around the nodes as they stand on its canvas,
+as it does each instance's panel; serQ's frame is in serQ's layout.
+
+Before v0.1.7-alpha.1, the page took the decision the arrival entered for
+the gateway. That was wrong three ways: `#0` mixed the server's `end`
+with the route's `choose` (llmd_nixl_pull), was missing where a gateway
+does not branch (vllm_nixl_push), and stood where there is no gateway
+(routing).
 
 ## U21. A router's choice and the workload's statements in the outline — landed
 

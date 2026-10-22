@@ -1,4 +1,4 @@
-// What the Flow view's inspector shows for a router or the client, and the
+// What the Flow view's inspector shows for a gateway or the client, and the
 // edits it makes: each property is a piece of the text serQ's outline places
 // (a `choose`'s keys, the workload's arrival), shown as it is written and
 // written back as the viewer types it. What it means is serQ's to say when it
@@ -23,14 +23,14 @@ export interface Section {
   title: string;
   props: Prop[];
   note?: string;
-  /** What a router's choice picks a member of, and the families it could pick from. */
+  /** What a gateway's choice picks a member of, and the families it could pick from. */
   target?: { value: string; options: string[]; set: (family: string) => void };
   /** A new key, from the presets or typed. */
   add?: { presets: Preset[]; put: (text: string) => void };
 }
 
 export interface Inspect {
-  kind: "router" | "client";
+  kind: "gateway" | "decision" | "client";
   title: string;
   sub: string;
   sections: Section[];
@@ -38,14 +38,16 @@ export interface Inspect {
 
 const text = (src: string, r: Range) => src.slice(r[0], r[1]);
 
-/** The router: each `choose` of the server and its gateways, what it picks a
- * member of and by what keys; and the calls the server makes. `fns` are
- * serQ's functions, which the keys offered call. */
-export function routerOf(ol: Outline, src: string, fns: SerqFunction[], apply: (edits: Edit[]) => void): Inspect {
+/** A gateway (its queue `gateway`, the figure's `gw.route`): each `choose`
+ * of its route, what it picks a member of and by what keys, and the calls
+ * the route makes. With no gateway, the server's decision: the server's own
+ * chooses and calls. `fns` are serQ's functions, which the keys offered call. */
+export function gatewayOf(ol: Outline, src: string, fns: SerqFunction[], apply: (edits: Edit[]) => void, gateway?: string): Inspect {
   const sections: Section[] = [];
   const families = ol.queues.filter((q) => q.family !== null).map((q) => q.name);
+  const ours = (x: { block: string; owner?: string }) => (gateway ? x.block === "route" && x.owner === gateway : x.block === "server");
   for (const c of ol.chooses ?? []) {
-    if (c.block === "entry") continue;
+    if (!ours(c)) continue;
     const calls = ol.calls.filter((k) => k.index === c.var && k.block === c.block && k.owner === c.owner);
     const of = calls[0]?.queue ?? "";
     const keys = c.keys.map((r) => text(src, r));
@@ -79,17 +81,18 @@ export function routerOf(ol: Outline, src: string, fns: SerqFunction[], apply: (
       add: { presets, put: (t) => by([...keys, t]) },
     });
   }
-  const calls = ol.calls.filter((k) => k.block !== "entry");
+  const calls = ol.calls.filter(ours);
   sections.push({
     title: "Calls",
-    props: calls.map((k) => ({ label: k.block === "route" ? `route ${k.owner ?? ""}`.trim() : "server", value: text(src, k.range) })),
+    props: calls.map((k) => ({ label: gateway ? `${gateway}.route` : "server", value: text(src, k.range) })),
     note: ol.chooses ? undefined : "This serQ does not place a choose in its outline: the keys are edited in Code until it does (docs/upstream.md U21).",
   });
-  const gateways = ol.routes.map((r) => r.gateway);
-  return { kind: "router", title: gateways.length ? `router · ${gateways.join(", ")}` : "router", sub: "the server's choice of where each request goes", sections };
+  return gateway
+    ? { kind: "gateway", title: `gateway ${gateway}`, sub: "where the server sends each request, and each reply comes back to", sections }
+    : { kind: "decision", title: "decision", sub: "where the server's own way branches", sections };
 }
 
-/** Keys a router's choice can be made by, over family `of`'s member `v`:
+/** Keys a gateway's choice can be made by, over family `of`'s member `v`:
  * each of serQ's functions (`fns`) whose one parameter is a stage, called on
  * the member, or a pool, called on each of the member's pools. Which they
  * are, and what each returns, is serQ's to say; the member that sorts first

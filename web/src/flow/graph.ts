@@ -11,7 +11,7 @@ import { points } from "../anchors";
 import { family } from "../events";
 import type { Draft } from "../edit";
 
-export type NodeKind = "client" | "engine" | "nic" | "station" | "delay" | "decision" | "draft";
+export type NodeKind = "client" | "gateway" | "engine" | "nic" | "station" | "delay" | "decision" | "draft";
 
 export interface GraphNode {
   id: string;
@@ -56,7 +56,9 @@ export interface GraphEdge {
   id: string;
   from: string;
   to: string;
-  kind: "arrival" | "flow" | "exit" | "copy";
+  /** An exit leaves the server, to the client; a reply goes back to the
+   * gateway from where its route ends, and leaves by the gateway's exit. */
+  kind: "arrival" | "flow" | "reply" | "exit" | "copy";
   copy?: "pull" | "push";
   poster?: string;
   /** A copy serQ brackets (two stations one job holds at once) rather than draws an arrow for. */
@@ -95,11 +97,16 @@ interface IrPool {
 }
 
 /** The client: the workload, where sessions come from and where each reply
- * goes back to; no stage of serQ's, but the ends of the figure's arrival and
- * exit arrows. serQ takes one workload a program, so there is one client.
- * Stopgap: serQ's figure draws the arrival and an `out` apart, with no glyph
- * for the workload; docs/upstream.md U20 asks it for the client. */
-export const CLIENT = "client";
+ * goes back to, outside the server. serQ takes one workload a program and
+ * draws it as one node (`data-role="client"`), named so that no stage is. */
+export const CLIENT = "#client";
+
+/** What serQ draws for a node that is no stage (`data-role`): the client,
+ * a gateway's route (`gw.route`), the server's decision, a pool's tick. */
+const ROLES: Record<string, NodeKind> = { client: "client", gateway: "gateway", decision: "decision", tick: "delay" };
+
+/** A node no session stays at and no pool or panel holds: the client, a gateway, a decision. */
+const isIcon = (n: GraphNode) => n.kind === "client" || n.kind === "gateway" || n.kind === "decision";
 
 /** The graph of the figure in `svg` (on the page, so that it has a layout), with `drafts` beside it. */
 export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrPool[] }, drafts: Draft[]): Graph {
@@ -115,7 +122,12 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrP
     const b = g.getBBox();
     const stage = g.dataset.stage;
     if (stage === undefined) {
-      nodes.push({ id, kind: "decision", label: label(g) ?? "decide", sub: "", x: b.x + b.width / 2, y: b.y + b.height / 2 });
+      const role = g.dataset.role ?? "decision";
+      const kind = ROLES[role] ?? "decision";
+      // its own words inside it: `client`, a gateway's chooses (`choose j, i`)
+      const words = label(g);
+      const sub = kind === "client" ? "the workload" : kind === "delay" ? role : (words ?? "");
+      nodes.push({ id, kind, label: kind === "client" ? "client" : kind === "delay" ? role : id, sub, x: b.x + b.width / 2, y: b.y + b.height / 2 });
       continue;
     }
     // a stacked instance's member (`P[1]`) is drawn apart, of its array's kind
@@ -126,21 +138,18 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrP
     const what = k?.kind === "Step" ? "engine" : (k?.kind ?? "").toLowerCase();
     nodes.push({ id, kind, label: stage, sub: (kind === "nic" ? `nic · ${what}` : what) + members, x: b.x + b.width / 2, y: b.y + b.height / 2 });
   }
+  // serQ's arrows, each with its ends: the arrival from the client, each
+  // exit back to it, a reply back to the gateway its route ends at, a flow
   const edges: GraphEdge[] = [];
-  const arrival = svg.querySelector<SVGPathElement>('path[data-role="arrival"]');
-  const exits = [...svg.querySelectorAll<SVGPathElement>('path[data-role="exit"]')];
-  if (arrival?.dataset.to || exits.length) {
-    const p = (arrival && points(arrival)[0]) ?? { x: 0, y: 0 };
-    nodes.push({ id: CLIENT, kind: "client", label: "client", sub: "the workload", x: p.x, y: p.y });
-  }
-  if (arrival?.dataset.to) edges.push({ id: `${CLIENT}>${arrival.dataset.to}`, from: CLIENT, to: arrival.dataset.to, kind: "arrival" });
-  // each reply back to the client: its turn is over, and its session thinks, or leaves
-  for (const e of exits) if (e.dataset.from) edges.push({ id: `${e.dataset.from}>${CLIENT}`, from: e.dataset.from, to: CLIENT, kind: "exit" });
-  for (const p of svg.querySelectorAll<SVGPathElement>('path[data-role="flow"]')) {
-    const from = p.dataset.from!;
-    const to = p.dataset.to!;
+  for (const p of svg.querySelectorAll<SVGPathElement>("path[data-role]")) {
+    const role = p.dataset.role!;
+    const from = p.dataset.from;
+    const to = p.dataset.to;
+    if (!from || !to || !(role === "arrival" || role === "exit" || role === "reply" || role === "flow")) continue;
     const copy = p.dataset.copy as "pull" | "push" | undefined;
-    edges.push({ id: `${from}>${to}`, from, to, kind: copy ? "copy" : "flow", copy, poster: p.dataset.poster });
+    const kind = role === "flow" ? (copy ? "copy" : "flow") : role;
+    const id = `${from}>${to}`;
+    if (!edges.some((e) => e.id === id)) edges.push({ id, from, to, kind, copy, poster: p.dataset.poster });
   }
   // a copy serQ brackets rather than draws an arrow for (NICs in no instance)
   for (const r of svg.querySelectorAll<SVGRectElement>('rect[data-role="bracket"][data-copy]')) {
@@ -168,7 +177,7 @@ export function graphOf(svg: SVGSVGElement, ir: { stages: IrStage[]; pools?: IrP
  * `P.kv[1]`); one named by no queue, on the station serQ draws its drum
  * nearest, if it draws one. A family's pool is one pool. */
 function poolsOf(svg: SVGSVGElement, pools: IrPool[], nodes: GraphNode[]) {
-  const stations = nodes.filter((n) => n.kind !== "decision");
+  const stations = nodes.filter((n) => !isIcon(n));
   const drums = [...svg.querySelectorAll<SVGGElement>('g[data-pool][data-role="drum"]')];
   const drumOf = (name: string) => drums.find((g) => g.dataset.pool === name);
   const seen = new Set<string>();
@@ -226,7 +235,7 @@ function instancesOf(svg: SVGSVGElement, nodes: GraphNode[]): GraphInstance[] {
   };
   const out: GraphInstance[] = [];
   for (const b of panels) {
-    const members = nodes.filter((n) => n.kind !== "decision" && panelOf(n) === b);
+    const members = nodes.filter((n) => !isIcon(n) && panelOf(n) === b);
     if (!members.length) continue;
     const words = texts
       .filter((t) => Math.abs(Number(t.getAttribute("y")) - (b.y - 7)) < 1 && Number(t.getAttribute("x")) >= b.x && Number(t.getAttribute("x")) < b.x + b.width)
@@ -257,11 +266,13 @@ interface Words {
  * serQ to write `data-for` on each, as it writes `data-pool` on a drum. */
 function wordsOf(svg: SVGSVGElement, nodes: GraphNode[], edges: GraphEdge[]) {
   const panels = [...svg.querySelectorAll<SVGRectElement>("rect.instance")].map((r) => r.getBBox());
+  const server = svg.querySelector<SVGRectElement>('rect[data-role="server"]')?.getBBox();
   let left: Words[] = [...svg.querySelectorAll<SVGTextElement>("text")]
     .filter((t) => !t.closest("g[data-node], g[data-pool]"))
     .map((el) => ({ x: Number(el.getAttribute("x")), y: Number(el.getAttribute("y")), text: el.textContent?.trim() ?? "", el }))
-    // an instance's words are its panel's (instancesOf)
-    .filter((w) => w.text && !panels.some((b) => Math.abs(w.y - (b.y - 7)) < 1 && w.x >= b.x && w.x < b.x + b.width));
+    // an instance's words are its panel's (instancesOf); the server's name, over its frame's corner, is the Flow view's frame's
+    .filter((w) => w.text && !panels.some((b) => Math.abs(w.y - (b.y - 7)) < 1 && w.x >= b.x && w.x < b.x + b.width))
+    .filter((w) => !(server && w.y < server.y && w.y > server.y - 12 && Math.abs(w.x - server.x) < 16));
   const take = (pick: (w: Words) => boolean, best: (w: Words) => number): Words | undefined => {
     const w = left.filter(pick).sort((a, b) => best(a) - best(b))[0];
     if (w) left = left.filter((x) => x !== w);
@@ -293,9 +304,7 @@ function wordsOf(svg: SVGSVGElement, nodes: GraphNode[], edges: GraphEdge[]) {
   left = left.filter((w) => w.text !== "prefix cache");
   // the rest: the nearest arrow's, if one is near (the arrival's process, a condition, an exit's, a copy's)
   const arrows = [...svg.querySelectorAll<SVGPathElement>("path[data-role]")].map((el) => {
-    const r = el.dataset.role;
-    const id = r === "arrival" ? `${CLIENT}>${el.dataset.to}` : r === "exit" ? `${el.dataset.from}>${CLIENT}` : `${el.dataset.from}>${el.dataset.to}`;
-    return { id, pts: points(el) };
+    return { id: `${el.dataset.from}>${el.dataset.to}`, pts: points(el) };
   });
   const near = new Map<string, Words[]>();
   for (const w of left) {

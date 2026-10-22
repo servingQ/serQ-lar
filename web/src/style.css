@@ -432,20 +432,21 @@ html[data-tab="metrics"] [data-show]:not([data-show~="metrics"]) { display: none
 .fwire-say { padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); box-shadow: var(--shadow); font-size: 12px; color: var(--ink); }
 .fwire-say kbd { font-size: 10.5px; }
 .react-flow__node.drop-on .fnode { box-shadow: 0 0 0 2px var(--busy), var(--shadow-lg); }
-/* the client and a router: an icon with serQ's words under it */
+/* the client, a gateway and the server's decision: an icon with serQ's words under it */
 .ficon { width: 96px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 4px 3px; border-radius: 10px; color: var(--ink); font-size: 11px; text-align: center; }
 .ficon b { font-size: 11.5px; font-weight: 600; }
 .ficon small { max-width: 100%; color: var(--dim); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ficon-glyph { display: grid; place-items: center; color: var(--ink); }
-.ficon.k-router .ficon-glyph, .ficon-glyph.k-router { color: var(--busy); }
+.ficon.k-gateway .ficon-glyph, .ficon-glyph.k-gateway { color: var(--busy); }
 .ficon.k-client .ficon-glyph, .ficon-glyph.k-client { color: var(--plain); }
+.ficon.k-decision .ficon-glyph, .ficon-glyph.k-decision { color: var(--dim); }
 .react-flow__node.selected .ficon { box-shadow: 0 0 0 2px var(--accent); }
 .react-flow__node.drop-on .ficon { box-shadow: 0 0 0 2px var(--busy); }
 /* the server: one a program, a frame around all but the client; clicks go through it */
 .react-flow__node-server { pointer-events: none; }
 .fserver { width: 100%; height: 100%; border: 1.5px dashed color-mix(in srgb, var(--ink) 30%, transparent); border-radius: 16px; }
 .fserver span { position: absolute; top: -9px; left: 14px; padding: 0 6px; background: var(--bg); color: var(--dim); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
-/* the inspector: the router's or the client's properties, on the right */
+/* the inspector: the gateway's or the client's properties, on the right */
 .finspect { flex: none; width: 272px; overflow-y: auto; padding: 10px 12px 14px; border-left: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: 12px; }
 .finspect header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .finspect header > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -463,7 +464,7 @@ html[data-tab="metrics"] [data-show]:not([data-show~="metrics"]) { display: none
 .finspect .fx { flex: none; width: 24px; height: 24px; padding: 0; line-height: 1; }
 .fnote-s { margin: 4px 0 0; color: var(--dim); font-size: 11px; line-height: 1.4; }
 .finspect footer { margin-top: 14px; }
-.fpart.k-router > i { width: 12px; height: 12px; background: none; border: 1.6px solid var(--busy); box-shadow: inset 0 0 0 2px var(--panel), inset 0 0 0 4px var(--busy); }
+.fpart.k-gateway > i { width: 12px; height: 12px; background: none; border: 1.6px solid var(--busy); box-shadow: inset 0 0 0 2px var(--panel), inset 0 0 0 4px var(--busy); }
 @media (max-width: 640px) {
   .fedit { flex-direction: column; }
   .fparts { width: auto; max-height: 40%; border-right: none; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 8px; }

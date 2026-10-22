@@ -53,7 +53,7 @@ export interface Call {
   owner?: string;
 }
 
-/** A `choose` statement: a router's pick of a family's member. */
+/** A `choose` statement: a gateway's pick of a family's member. */
 export interface Choose {
   /** Its variable (`j`), what it is chosen among (`ND`), each key of `by (…)`, and the parenthesised list. */
   var: string;

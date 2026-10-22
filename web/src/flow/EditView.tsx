@@ -10,10 +10,10 @@
 // dragged and dropped, never clicked: an engine on the canvas is a draft
 // where it lands, on a station called by it; a memory pool on an engine is
 // declared there; an arrow or a KV transfer on a station starts there, and
-// the station clicked next is its other end; the router on an engine routes
+// the station clicked next is its other end; the gateway on an engine routes
 // its calls. An engine clicked is made aggregated, a prefiller or a decoder
 // on its toolbar, a KV transfer clicked a pull or a push. The client (the
-// workload) and the router are icons; clicked, their properties open in the
+// workload) and the gateway are icons; clicked, their properties open in the
 // inspector on the right, each written back into the text where serQ's
 // outline places it (inspect.ts). A frame holds the server; a NIC stands on
 // its instance's edge. The run plays over it (replay.ts): a
@@ -88,9 +88,9 @@ export interface EditHost {
   report(pool: string): void;
   /** The nodes moved, were measured, or their arrows were drawn again: the replay is placed again. */
   placed(): void;
-  /** What the inspector shows for the router (a decision, `#0`) or the client, as the text writes it now. */
+  /** What the inspector shows for a gateway (`gw.route`), the server's decision (`#0`) or the client, as the text writes it now. */
   inspect(id: string): Inspect | null;
-  /** The router dropped on a station: its calls choose a member of its queue. */
+  /** The gateway dropped on a station: its calls choose a member of its queue. */
   routeTo(id: string): void;
 }
 
@@ -111,7 +111,7 @@ export type Part = { kind: "engine" | "delay" };
  * memory pool, on an engine; an arrow (a call) or a KV transfer (pulled,
  * until it is clicked and made a push), from a station, to the station
  * clicked next. */
-type Tool = { kind: "node"; part: Part } | { kind: "memory"; pool: "blocks" | "slots" } | { kind: "arrow"; arrow: Arrow } | { kind: "router" };
+type Tool = { kind: "node"; part: Part } | { kind: "memory"; pool: "blocks" | "slots" } | { kind: "arrow"; arrow: Arrow } | { kind: "gateway" };
 type Arrow = "call" | "kv";
 
 /** The type a part is dragged as: the canvas takes nothing else. */
@@ -120,7 +120,7 @@ const PART = "application/x-serq-part";
 /** Whether node `n` takes tool `t` dropped on it. */
 function takes(t: Tool, n: GraphNode): boolean {
   if (t.kind === "node") return n.kind !== "draft";
-  if (t.kind === "memory" || t.kind === "router") return n.kind === "engine";
+  if (t.kind === "memory" || t.kind === "gateway") return n.kind === "engine";
   if (t.arrow === "call") return n.kind !== "draft" && n.kind !== "nic";
   return n.kind === "engine" || n.kind === "nic";
 }
@@ -153,7 +153,7 @@ function SerqNode({ id, data, parentId, selected }: NodeProps<SerqNodeT>) {
   const output = n.kind !== "draft" || nicDraft;
   const station = n.kind === "engine" || n.kind === "nic" || n.kind === "station" || n.kind === "delay";
   const role = n.kind === "engine" || n.draft?.kind === "queue" ? host.role(id) : null;
-  if (n.kind === "client" || n.kind === "decision") return <IconNode n={n} />;
+  if (n.kind === "client" || n.kind === "gateway" || n.kind === "decision") return <IconNode n={n} />;
   if (n.kind === "nic")
     return (
       <div className={`fnode k-nic dock-${n.dock ?? "right"}`} title={[n.title ?? n.label, n.sub, n.note, "an add-on of its queue's instance: the link its KV copies take"].filter(Boolean).join("\n")}>
@@ -222,35 +222,59 @@ function SerqNode({ id, data, parentId, selected }: NodeProps<SerqNodeT>) {
               ⊞ Make instance
             </button>
           )}
-          {n.kind !== "draft" && <CodeButton id={id} />}
+          {n.kind !== "draft" && !id.startsWith("#") && <CodeButton id={id} />}
         </NodeToolbar>
       )}
     </div>
   );
 }
 
-/** The client and a router: an icon with serQ's words under it. The client
- * sends on its right and takes each reply back underneath; a router takes
- * a request on its left and sends it on, to the member it chooses, on its
- * right. Clicked, its properties open in the inspector. */
+/** The client, a gateway and the server's decision: an icon with serQ's
+ * words under it. The client sends on its right and takes each reply back
+ * underneath. A gateway (`gw.route`) takes a request on its left and sends
+ * it on, to the member it chooses, on its right; each reply its route ends
+ * with comes back into it underneath, and goes out to the client
+ * underneath too. A decision is where the server's way branches before
+ * that. Clicked, its properties open in the inspector. */
 function IconNode({ n }: { n: GraphNode }) {
-  const client = n.kind === "client";
-  const what = client ? "client" : "router";
+  const what = n.kind === "client" ? "client" : n.kind === "gateway" ? "gateway" : "decision";
+  // serQ's words: a gateway's queue over it (`gw`) and its chooses in it; a decision's chooses beside it
+  const name = what === "client" ? n.sub : what === "gateway" ? (n.title ?? n.label) : n.sub || n.title || "";
+  const tip = [what === "client" ? "client: the workload" : `${what}: ${n.label}`, what === "client" ? n.sub : n.sub || n.title, n.note].filter(Boolean).join("\n");
   return (
-    <div className={`ficon k-${what}`} title={`${[client ? "client: the workload" : `router: ${n.label}`, client ? n.sub : n.note].filter(Boolean).join("\n")}\n(click: its properties)`}>
-      <Handle type="target" position={client ? Position.Bottom : Position.Left} />
+    <div className={`ficon k-${what}`} title={`${tip}\n(click: its properties)`}>
+      <Handle type="target" position={what === "client" ? Position.Bottom : Position.Left} />
       <span className="ficon-glyph" aria-hidden="true">
-        {client ? <ClientGlyph /> : <RouterGlyph />}
+        <Glyph kind={what} />
       </span>
       <b>{what}</b>
-      <small>{client ? n.sub : n.label}</small>
+      <small>{name}</small>
       <Handle type="source" position={Position.Right} />
+      {what === "gateway" && (
+        <>
+          <Handle id="reply" type="target" position={Position.Bottom} style={{ left: "65%" }} />
+          <Handle id="reply" type="source" position={Position.Bottom} style={{ left: "35%" }} />
+        </>
+      )}
     </div>
   );
 }
 
-/** A router: a box with the arrows it sends out four ways. */
-function RouterGlyph() {
+function Glyph({ kind }: { kind: "client" | "gateway" | "decision" }) {
+  return kind === "client" ? <ClientGlyph /> : kind === "gateway" ? <GatewayGlyph /> : <DecisionGlyph />;
+}
+
+/** The server's decision: a diamond, as serQ draws it. */
+function DecisionGlyph() {
+  return (
+    <svg viewBox="0 0 32 32" width="26" height="26">
+      <path d="M16 4 28 16 16 28 4 16Z" fill="var(--raised)" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** A gateway: a box with the arrows it sends out four ways. */
+function GatewayGlyph() {
   return (
     <svg viewBox="0 0 32 32" width="30" height="30">
       <circle cx="16" cy="16" r="13" fill="var(--raised)" stroke="currentColor" strokeWidth="1.6" />
@@ -343,7 +367,7 @@ function Parts() {
     {
       title: "Routing",
       items: [
-        { key: "router", label: "Router", hint: "on an engine", title: "The router: drop it on an engine and each call to it chooses a member of its queue, by the least work; click the router to choose by what", tool: { kind: "router" } },
+        { key: "gateway", label: "Gateway", hint: "on an engine", title: "The gateway: drop it on an engine and each call to it chooses a member of its queue, by the least work; click the gateway to choose by what", tool: { kind: "gateway" } },
       ],
     },
     {
@@ -396,7 +420,7 @@ function Parts() {
   );
 }
 
-/** The inspector, on the right: the router's or the client's properties as
+/** The inspector, on the right: the gateway's or the client's properties as
  * the text writes them, each written back as it is changed (Enter, or
  * leaving the field). `graph` is only there so that it reads the text again
  * after every redraw. */
@@ -408,7 +432,7 @@ function Inspector({ id, close }: { id: string; graph: Graph | null; close: () =
     <aside className="finspect" aria-label={`${it.title}: its properties`}>
       <header>
         <span className={`ficon-glyph k-${it.kind}`} aria-hidden="true">
-          {it.kind === "client" ? <ClientGlyph /> : <RouterGlyph />}
+          <Glyph kind={it.kind} />
         </span>
         <div>
           <b>{it.title}</b>
@@ -524,8 +548,8 @@ function InstanceNode({ data }: NodeProps<InstanceNodeT>) {
     </div>
   );
 }
-/** The server: a frame around the router and the engines, where the client's requests go.
- * Stopgap: serQ's figure draws no frame for the server; docs/upstream.md U20 asks it to. */
+/** The server: a frame around the gateway and the engines, where the client's requests go.
+ * serQ's figure draws the frame in its layout (`data-role="server"`, U20); this one goes around the nodes as they stand here, as an instance's panel does. */
 function ServerNode() {
   return (
     <div className="fserver" aria-hidden="true">
@@ -626,6 +650,9 @@ function edgesOf(g: Graph): Edge[] {
       id: e.id,
       source: e.from,
       target: e.to,
+      // a reply comes into the gateway, and goes out of it to the client, under it
+      sourceHandle: e.kind === "exit" && g.nodes.some((n) => n.id === e.from && n.kind === "gateway") ? "reply" : undefined,
+      targetHandle: e.kind === "reply" ? "reply" : undefined,
       type: "routed",
       animated: copy,
       deletable: false,
@@ -742,7 +769,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [graph, setGraph] = useState<Graph | null>(null);
-  /** The router or the client whose properties the inspector shows. */
+  /** The gateway or the client whose properties the inspector shows. */
   const [inspected, setInspected] = useState<string | null>(null);
   const [routes, setRoutes] = useState<Map<string, Point[]>>(new Map());
   const [A, setA] = useState<Awaited<ReturnType<typeof avoid>> | null>(null);
@@ -805,7 +832,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
         type: "serq",
         position: at(n) ?? { x: n.x - W / 2, y: n.y - H / 2 },
         data: { node: n, nic: g.nodes.some((x) => x.id === nicOf(n.id)) },
-        deletable: n.kind !== "client" && n.kind !== "decision",
+        deletable: n.kind !== "client" && n.kind !== "gateway" && !n.id.startsWith("#"),
         // its size as last measured, so that the panels are fitted to it at once
         measured: flow.getNode(n.id)?.measured,
       }));
@@ -850,7 +877,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
         if (n.type === "server") return [];
         return [n.type === "serq" ? { id: n.id, x: p.x, y: p.y, ...sizeOf(n), in: n.data.node.kind === "client" ? ("bottom" as const) : undefined } : { id: n.id, x: p.x, y: p.y, w: n.width ?? 0, h: HEAD }];
       });
-      setRoutes(route(A, boxes, edges.map((e) => ({ id: e.id, from: e.source, to: e.target }))));
+      setRoutes(route(A, boxes, edges.map((e) => ({ id: e.id, from: e.source, to: e.target, reply: e.targetHandle === "reply" ? ("to" as const) : e.sourceHandle === "reply" ? ("from" as const) : undefined }))));
     });
     return () => cancelAnimationFrame(id);
   }, [A, nodes, edges]);
@@ -951,7 +978,7 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
     const t = JSON.parse(raw) as Tool;
     const on = under(e, t);
     if (t.kind === "node") return make(t.part, { x: e.clientX, y: e.clientY }, on);
-    if (t.kind === "router") return on ? host.routeTo(on.id) : host.say("The router chooses among an engine's members: drop it on one.", true);
+    if (t.kind === "gateway") return on ? host.routeTo(on.id) : host.say("The gateway chooses among an engine's members: drop it on one.", true);
     if (!on) return host.say(t.kind === "memory" ? "A memory pool goes on an engine: drop it on one." : t.arrow === "call" ? "An arrow starts at a station: drop it on one." : "A KV transfer starts at the queue whose KV it copies: drop it on an engine.", true);
     if (t.kind === "memory") return memory(t.pool, on);
     setPointer({ x: e.clientX, y: e.clientY });
@@ -1022,9 +1049,9 @@ function Canvas({ host, bind }: { host: EditHost; bind: (show: (g: Graph) => voi
             if (n.type === "server") return;
             const id = n.type === "instance" ? (n.data.instance.members.find((m) => !family(m).endsWith(".nic")) ?? null) : n.id;
             if (wire) return id && finish(id);
-            // the router and the client open their properties
+            // the client, a gateway and the server's decision open their properties
             const k = n.type === "serq" ? n.data.node.kind : null;
-            setInspected(k === "client" || k === "decision" ? n.id : null);
+            setInspected(k === "client" || k === "gateway" || k === "decision" ? n.id : null);
             host.select(id);
           }}
           onEdgeClick={(_, e) => {

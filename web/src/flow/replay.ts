@@ -88,7 +88,12 @@ export function flowAnchors(el: HTMLElement, graph: Graph, placed: Map<string, P
     if (!path || e.bracket) continue;
     const pts = sample(path);
     if (e.from === CLIENT) arrival = { to: e.to, pts };
-    else if (e.to === CLIENT) {
+    else if (e.kind === "reply" || e.kind === "exit") {
+      // to the gateway, which sends it on to the client
+      if (e.kind === "reply") {
+        const out = paths.get(`${e.to}>${CLIENT}`);
+        if (out) pts.push(...sample(out));
+      }
       // back into the client: a session at a tool, thinking, parks under its card
       const c = nodes.get(CLIENT);
       if (c) pts.push({ x: c.x - 6, y: c.y + c.h + 8 });
